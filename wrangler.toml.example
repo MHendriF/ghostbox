@@ -42,7 +42,7 @@ AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 
 # ---- Static assets (web frontend) ----
 [assets]
-directory = "./src/web"
+directory = "./dist"
 
 # ---- Scheduled cron triggers (retention cleanup every hour) ----
 [triggers]

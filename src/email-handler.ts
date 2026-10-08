@@ -117,18 +117,20 @@ export async function handleEmail(
 
     // 4. Send Telegram webhook alert if configured (100% Free)
     if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
-      sendTelegramNotification(
-        env.TELEGRAM_BOT_TOKEN,
-        env.TELEGRAM_CHAT_ID,
-        {
-          to,
-          from,
-          subject,
-          body,
-          messageId,
-        },
-        env.TELEGRAM_THREAD_ID
-      ).catch((tgErr) => {
+      try {
+        await sendTelegramNotification(
+          env.TELEGRAM_BOT_TOKEN,
+          env.TELEGRAM_CHAT_ID,
+          {
+            to,
+            from,
+            subject,
+            body,
+            messageId,
+          },
+          env.TELEGRAM_THREAD_ID
+        );
+      } catch (tgErr: any) {
         console.warn(
           JSON.stringify({
             level: 'warn',
@@ -136,7 +138,7 @@ export async function handleEmail(
             error: tgErr?.message || String(tgErr),
           })
         );
-      });
+      }
     }
   } catch (err: any) {
     console.error(

@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "vite",
+    "build": "vite build",
+    "deploy": "npm run build && wrangler deploy",
     "test": "node --test test/security.test.js",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json",
+    "typecheck": "tsc --noEmit",
     "db:create": "wrangler d1 create ghostbox-db",
     "db:migrate": "wrangler d1 execute ghostbox-db --file=src/db/schema.sql",
     "db:local": "wrangler d1 execute ghostbox-db --local --file=src/db/schema.sql"
@@ -17,7 +18,10 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261008.1",
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
+    "svelte": "^5.57.2",
     "typescript": "^5.5.0",
+    "vite": "^5.4.21",
     "wrangler": "^4.148.0"
   },
   "overrides": {

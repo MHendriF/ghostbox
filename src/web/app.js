@@ -241,7 +241,7 @@ function downloadEml(msg) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('📥 File .eml berhasil diunduh');
+  showToast('File .eml berhasil diunduh');
 }
 
 function showToast(text) {
@@ -294,12 +294,12 @@ async function deleteSingleMessage(address, messageId) {
         method: 'DELETE',
       }
     );
-    showToast('🗑 Pesan dihapus');
+    showToast('Pesan berhasil dihapus');
     openMessageIds.delete(messageId);
     await loadMessages();
   } catch (err) {
     console.error(err);
-    showToast(`⚠️ Gagal menghapus: ${err.message}`);
+    showToast(`Gagal menghapus: ${err.message}`);
   }
 }
 
@@ -313,9 +313,9 @@ async function createRandomInbox() {
     if (localPartInput) localPartInput.value = '';
     if (newBox) newBox.classList.add('hidden');
     await loadInboxes(inbox.address);
-    showToast(`✓ Inbox siap: ${inbox.address}`);
+    showToast(`Inbox siap: ${inbox.address}`);
   } catch (err) {
-    showToast(`⚠️ ${err.message}`);
+    showToast(err.message);
   }
 }
 
@@ -429,8 +429,8 @@ function renderMessages() {
     emptyState.className = 'empty-state';
 
     const icon = document.createElement('div');
-    icon.className = 'icon';
-    icon.textContent = '✉️';
+    icon.className = 'icon empty-state-icon';
+    icon.innerHTML = `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
 
     const title = document.createElement('div');
     title.className = 'title';
@@ -450,8 +450,8 @@ function renderMessages() {
     emptySearch.className = 'empty-state';
 
     const icon = document.createElement('div');
-    icon.className = 'icon';
-    icon.textContent = '🔍';
+    icon.className = 'icon empty-state-icon';
+    icon.innerHTML = `<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`;
 
     const title = document.createElement('div');
     title.className = 'title';
@@ -531,15 +531,17 @@ function renderMessages() {
       const otpPill = document.createElement('button');
       otpPill.className = 'otp-pill';
       otpPill.title = 'Salin kode verifikasi';
-      otpPill.textContent = `🔑 ${detectedOtp}`;
+      const keySvg = `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><line x1="10.85" y1="12.15" x2="19" y2="4"/><line x1="18" y1="5" x2="20" y2="7"/><line x1="15" y1="8" x2="17" y2="10"/></svg>`;
+      const checkSvg = `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+      otpPill.innerHTML = `${keySvg}<span>${detectedOtp}</span>`;
       otpPill.addEventListener('click', async (e) => {
         e.stopPropagation();
         await navigator.clipboard.writeText(detectedOtp);
-        otpPill.textContent = `✓ ${detectedOtp}`;
+        otpPill.innerHTML = `${checkSvg}<span>${detectedOtp}</span>`;
         otpPill.classList.add('copied');
-        showToast(`📋 Kode disalin: ${detectedOtp}`);
+        showToast(`Kode disalin: ${detectedOtp}`);
         setTimeout(() => {
-          otpPill.textContent = `🔑 ${detectedOtp}`;
+          otpPill.innerHTML = `${keySvg}<span>${detectedOtp}</span>`;
           otpPill.classList.remove('copied');
         }, 1800);
       });
@@ -556,7 +558,7 @@ function renderMessages() {
     const dlBtn = document.createElement('button');
     dlBtn.className = 'icon-btn download-icon';
     dlBtn.title = 'Unduh file pesan (.EML)';
-    dlBtn.textContent = '📥';
+    dlBtn.innerHTML = `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
     dlBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       downloadEml(msg);
@@ -565,7 +567,7 @@ function renderMessages() {
     const delBtn = document.createElement('button');
     delBtn.className = 'icon-btn delete-icon';
     delBtn.title = 'Hapus pesan';
-    delBtn.textContent = '🗑';
+    delBtn.innerHTML = `<svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteSingleMessage(inboxSelect.value, msg.id);
@@ -573,7 +575,7 @@ function renderMessages() {
 
     const chevron = document.createElement('span');
     chevron.className = 'icon-btn expand-chevron';
-    chevron.textContent = '▼';
+    chevron.innerHTML = `<svg class="ui-icon chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 
     actions.append(dlBtn, delBtn, chevron);
     header.append(avatar, info, actions);
@@ -622,20 +624,26 @@ function renderMessages() {
 copyBtn.addEventListener('click', async () => {
   if (!inboxSelect.value) return;
   await navigator.clipboard.writeText(inboxSelect.value);
-  const originalText = copyBtn.querySelector('.copy-label')
-    ? copyBtn.querySelector('.copy-label').textContent
-    : 'Copy Address';
+  const copyLabel = copyBtn.querySelector('.copy-label');
+  const copyIcon = copyBtn.querySelector('.copy-icon');
+  const originalText = copyLabel ? copyLabel.textContent : 'Copy Address';
 
   copyBtn.classList.add('copied');
-  if (copyBtn.querySelector('.copy-label')) {
-    copyBtn.querySelector('.copy-label').textContent = 'Copied!';
+  if (copyLabel) {
+    copyLabel.textContent = 'Copied!';
   }
-  showToast('📋 Alamat email disalin ke clipboard');
+  if (copyIcon) {
+    copyIcon.innerHTML = `<svg class="ui-icon check-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  }
+  showToast('Alamat email disalin ke clipboard');
 
   setTimeout(() => {
     copyBtn.classList.remove('copied');
-    if (copyBtn.querySelector('.copy-label')) {
-      copyBtn.querySelector('.copy-label').textContent = originalText;
+    if (copyLabel) {
+      copyLabel.textContent = originalText;
+    }
+    if (copyIcon) {
+      copyIcon.innerHTML = `<svg class="ui-icon copy-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
     }
   }, 1800);
 });
@@ -671,10 +679,10 @@ deleteBtn.addEventListener('click', async () => {
   const target = inboxSelect.value;
   try {
     await fetchJson(`/api/inboxes/${encodeURIComponent(target)}`, { method: 'DELETE' });
-    showToast(`🗑 Inbox ${target} dihapus`);
+    showToast(`Inbox ${target} dihapus`);
     await loadInboxes();
   } catch (err) {
-    showToast(`⚠️ ${err.message}`);
+    showToast(err.message);
   }
 });
 
@@ -689,9 +697,9 @@ createCustomBtn.addEventListener('click', async () => {
     localPartInput.value = '';
     newBox.classList.add('hidden');
     await loadInboxes(inbox.address);
-    showToast(`✓ Inbox dibuat: ${inbox.address}`);
+    showToast(`Inbox dibuat: ${inbox.address}`);
   } catch (err) {
-    showToast(`⚠️ ${err.message}`);
+    showToast(err.message);
   }
 });
 
@@ -723,7 +731,7 @@ if (authForm) {
       if (authUsername) localStorage.setItem(USERNAME_KEY, authUsername);
       if (authPasscode) localStorage.setItem(PASSCODE_KEY, authPasscode);
       hideAuthModal();
-      showToast('🔓 Akses terbuka');
+      showToast('Akses terbuka');
 
       // Boot session and inboxes after successful verification
       await ensureSession();
@@ -750,7 +758,7 @@ if (lockBtn) {
     if (messageCount) messageCount.textContent = '0 messages';
     if (messageList) messageList.replaceChildren();
     showAuthModal();
-    showToast('🔒 Sesi telah dikunci');
+    showToast('Sesi telah dikunci');
   });
 }
 
