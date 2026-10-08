@@ -35,6 +35,9 @@ MAX_MESSAGES_LIMIT = "100"
 # Master credentials protection (leave empty or unset for public mode)
 AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
 AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
+# Telegram Webhook Alerts (Optional, 100% Free)
+# TELEGRAM_BOT_TOKEN = "<YOUR_BOT_TOKEN>"
+# TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
 
 # ---- Static assets (web frontend) ----
 [assets]
@@ -88,6 +91,8 @@ DEFAULT_MESSAGES_LIMIT = "50"
 MAX_MESSAGES_LIMIT = "100"
 AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
 AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
+# TELEGRAM_BOT_TOKEN = "<YOUR_BOT_TOKEN>"
+# TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "ghostbox-db"

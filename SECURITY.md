@@ -23,8 +23,11 @@ If you discover a security vulnerability within GhostBox, please report it respo
 ## Security Architecture & Defenses
 
 GhostBox implements several defense-in-depth measures:
+
 - **XSS Prevention**: Email contents rendered through DOM `textContent` APIs. Untrusted HTML email bodies are isolated in an unprivileged sandboxed iframe (`sandbox="allow-popups"` with no script execution and no origin inheritance).
-- **HTTP Security Headers**: Strict Content Security Policy (CSP), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `X-Frame-Options: DENY`.
-- **Session & Ownership Isolation**: Inboxes are tied to creator sessions and cannot be hijacked by other sessions without authorization.
+- **HTTP Security Headers**: Strict Content Security Policy (CSP), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `frame-ancestors 'none'`, `form-action 'self'`, and `X-Frame-Options: DENY`.
+- **Timing-Safe Authentication**: Master username and passcode validation uses constant-time string comparison (`timingSafeEqual`) to prevent side-channel timing attacks.
+- **Strict Session Isolation**: Header `x-session-id` is strictly validated against UUID v4 format (`isValidUuid`) before query execution, rejecting malformed or malicious identifiers.
+- **CRLF Injection Prevention**: Raw `.eml` download generation strictly strips carriage return and line feed characters from `From`, `To`, and `Subject` headers.
+- **Telegram Webhook Clamping & Token Validation**: Outbound Telegram notifications enforce strict bot token regex validation and clamp message payloads to <= 4000 characters, stripping control characters to prevent API rejection.
 - **Ingestion Controls**: Strict domain whitelist verification, payload raw size limits (1MB), and field truncation limits on inbound emails.
-- **Automatic Retention**: Expired messages and orphaned inboxes are automatically purged via scheduled Cron Triggers.

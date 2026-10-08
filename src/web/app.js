@@ -28,6 +28,16 @@ const appTitle = document.getElementById('appTitle');
 const appSubtitle = document.getElementById('appSubtitle');
 const countdownText = document.getElementById('countdownText');
 
+/** @type {HTMLInputElement} */
+const searchInput = /** @type {*} */ (document.getElementById('searchInput'));
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+const filterAllBtn = document.getElementById('filterAllBtn');
+const filterOtpBtn = document.getElementById('filterOtpBtn');
+
+let allMessages = [];
+let activeFilter = 'all';
+let searchQuery = '';
+
 let appConfig = {
   appName: 'GhostBox',
   mailDomain: 'example.com',
@@ -175,14 +185,63 @@ function extractOtp(subject = '', body = '') {
     return matchLabeled[1];
   }
 
-  // Match standalone 6-digit or 4-digit numeric code surrounded by boundary
-  const standaloneRegex = /\b(\d{6}|\d{4})\b/;
-  const matchStandalone = text.match(standaloneRegex);
-  if (matchStandalone && matchStandalone[1]) {
-    return matchStandalone[1];
+  // Match standalone 6-8 digit numeric code
+  const standalone6to8 = /\b(\d{6,8})\b/;
+  const match6to8 = text.match(standalone6to8);
+  if (match6to8 && match6to8[1]) {
+    return match6to8[1];
+  }
+
+  // Match standalone 4-5 digit numeric code (filtering out common years 1970-2099)
+  const standalone4to5 = /\b(\d{4,5})\b/g;
+  let match4to5;
+  while ((match4to5 = standalone4to5.exec(text)) !== null) {
+    const val = parseInt(match4to5[1], 10);
+    if (val >= 1970 && val <= 2099) {
+      continue;
+    }
+    return match4to5[1];
   }
 
   return null;
+}
+
+function downloadEml(msg) {
+  const d = parseDate(msg.received_at);
+  const dateStr = isNaN(d.getTime()) ? new Date().toUTCString() : d.toUTCString();
+  const isHtml = isHtmlContent(msg.body || '');
+  const contentType = isHtml ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+
+  const cleanFrom = (msg.from_address || 'unknown').replace(/[\r\n]+/g, ' ').trim();
+  const cleanTo = (msg.inbox_address || (currentInbox ? currentInbox.textContent : '')).replace(/[\r\n]+/g, ' ').trim();
+  const cleanSubject = (msg.subject || '(No Subject)').replace(/[\r\n]+/g, ' ').trim();
+
+  const lines = [
+    `From: ${cleanFrom}`,
+    `To: ${cleanTo}`,
+    `Subject: ${cleanSubject}`,
+    `Date: ${dateStr}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: ${contentType}`,
+    `Content-Transfer-Encoding: 8bit`,
+    `X-Mailer: GhostBox Disposable Mail`,
+    '',
+    msg.body || '',
+  ];
+
+  const blob = new Blob([lines.join('\r\n')], { type: 'message/rfc822' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const cleanSubj = (msg.subject || 'pesan')
+    .replace(/[^a-zA-Z0-9_\-]/g, '_')
+    .slice(0, 30);
+  a.href = url;
+  a.download = `${cleanSubj}_${msg.id}.eml`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('📥 File .eml berhasil diunduh');
 }
 
 function showToast(text) {
@@ -320,9 +379,8 @@ async function loadMessages(isSilent = false) {
   if (!address) return;
   currentInbox.textContent = address;
 
-  let messages = [];
   try {
-    messages = await fetchJson(`/api/inboxes/${encodeURIComponent(address)}/messages`);
+    allMessages = await fetchJson(`/api/inboxes/${encodeURIComponent(address)}/messages`);
   } catch (err) {
     if (!isSilent) {
       showToast(`⚠️ Gagal memuat pesan: ${err.message}`);
@@ -331,16 +389,42 @@ async function loadMessages(isSilent = false) {
   }
 
   // Background tab notification check
-  if (messages.length > previousMessageCount && document.hidden) {
-    unreadCount += messages.length - previousMessageCount;
+  if (allMessages.length > previousMessageCount && document.hidden) {
+    unreadCount += allMessages.length - previousMessageCount;
     document.title = `(${unreadCount}) ✉️ Pesan Baru - ${appConfig.appName}`;
   }
-  previousMessageCount = messages.length;
+  previousMessageCount = allMessages.length;
 
-  messageCount.textContent = `${messages.length} messages`;
+  renderMessages();
+}
+
+function renderMessages() {
+  const query = (searchQuery || '').toLowerCase().trim();
+  const filtered = allMessages.filter((msg) => {
+    if (activeFilter === 'otp') {
+      const otp = extractOtp(msg.subject, msg.body);
+      if (!otp) return false;
+    }
+    if (query) {
+      const subj = (msg.subject || '').toLowerCase();
+      const from = (msg.from_address || '').toLowerCase();
+      const body = (msg.body || '').toLowerCase();
+      if (!subj.includes(query) && !from.includes(query) && !body.includes(query)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (query || activeFilter !== 'all') {
+    messageCount.textContent = `${filtered.length} dari ${allMessages.length} pesan`;
+  } else {
+    messageCount.textContent = `${allMessages.length} messages`;
+  }
+
   messageList.replaceChildren();
 
-  if (!messages.length) {
+  if (!allMessages.length) {
     const emptyState = document.createElement('div');
     emptyState.className = 'empty-state';
 
@@ -354,19 +438,53 @@ async function loadMessages(isSilent = false) {
 
     const sub = document.createElement('div');
     sub.className = 'sub';
-    sub.textContent = `Kirim email ke ${address}. Email akan muncul secara otomatis dalam hitungan detik.`;
+    sub.textContent = `Kirim email ke ${currentInbox.textContent}. Email akan muncul secara otomatis dalam hitungan detik.`;
 
     emptyState.append(icon, title, sub);
     messageList.append(emptyState);
     return;
   }
 
-  // Open first message by default if none are explicitly selected
-  if (openMessageIds.size === 0 && messages.length > 0) {
-    openMessageIds.add(messages[0].id);
+  if (!filtered.length) {
+    const emptySearch = document.createElement('div');
+    emptySearch.className = 'empty-state';
+
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    icon.textContent = '🔍';
+
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = 'Tidak ada pesan yang sesuai';
+
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = 'Coba ubah kata kunci pencarian atau matikan filter OTP.';
+
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn btn-secondary';
+    resetBtn.textContent = 'Reset Filter';
+    resetBtn.addEventListener('click', () => {
+      if (searchInput) searchInput.value = '';
+      searchQuery = '';
+      if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
+      activeFilter = 'all';
+      if (filterAllBtn) filterAllBtn.classList.add('active');
+      if (filterOtpBtn) filterOtpBtn.classList.remove('active');
+      renderMessages();
+    });
+
+    emptySearch.append(icon, title, sub, resetBtn);
+    messageList.append(emptySearch);
+    return;
   }
 
-  for (const msg of messages) {
+  // Open first message by default if none are explicitly selected
+  if (openMessageIds.size === 0 && filtered.length > 0) {
+    openMessageIds.add(filtered[0].id);
+  }
+
+  for (const msg of filtered) {
     const card = document.createElement('div');
     card.className = `message-card ${openMessageIds.has(msg.id) ? 'open' : ''}`;
 
@@ -434,21 +552,30 @@ async function loadMessages(isSilent = false) {
     const actions = document.createElement('div');
     actions.className = 'message-header-actions';
 
+    // Download EML button
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'icon-btn download-icon';
+    dlBtn.title = 'Unduh file pesan (.EML)';
+    dlBtn.textContent = '📥';
+    dlBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadEml(msg);
+    });
+
     const delBtn = document.createElement('button');
     delBtn.className = 'icon-btn delete-icon';
     delBtn.title = 'Hapus pesan';
     delBtn.textContent = '🗑';
     delBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      deleteSingleMessage(address, msg.id);
+      deleteSingleMessage(inboxSelect.value, msg.id);
     });
 
     const chevron = document.createElement('span');
     chevron.className = 'icon-btn expand-chevron';
     chevron.textContent = '▼';
 
-    actions.append(delBtn, chevron);
-
+    actions.append(dlBtn, delBtn, chevron);
     header.append(avatar, info, actions);
 
     // Accordion Toggle Behavior
@@ -470,7 +597,6 @@ async function loadMessages(isSilent = false) {
       if (isHtmlContent(msg.body)) {
         const iframe = document.createElement('iframe');
         iframe.className = 'message-iframe';
-        // Isolated sandbox: allow popups but NO allow-scripts and NO allow-same-origin
         iframe.setAttribute('sandbox', 'allow-popups');
         iframe.srcdoc = msg.body;
         bodyContainer.append(iframe);
@@ -625,6 +751,50 @@ if (lockBtn) {
     if (messageList) messageList.replaceChildren();
     showAuthModal();
     showToast('🔒 Sesi telah dikunci');
+  });
+}
+
+// Search input listener
+if (searchInput) {
+  searchInput.addEventListener('input', () => {
+    searchQuery = searchInput.value;
+    if (clearSearchBtn) {
+      if (searchQuery.trim()) {
+        clearSearchBtn.classList.remove('hidden');
+      } else {
+        clearSearchBtn.classList.add('hidden');
+      }
+    }
+    renderMessages();
+  });
+}
+
+// Clear search button listener
+if (clearSearchBtn) {
+  clearSearchBtn.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    searchQuery = '';
+    clearSearchBtn.classList.add('hidden');
+    renderMessages();
+  });
+}
+
+// Filter tabs listener
+if (filterAllBtn) {
+  filterAllBtn.addEventListener('click', () => {
+    activeFilter = 'all';
+    filterAllBtn.classList.add('active');
+    if (filterOtpBtn) filterOtpBtn.classList.remove('active');
+    renderMessages();
+  });
+}
+
+if (filterOtpBtn) {
+  filterOtpBtn.addEventListener('click', () => {
+    activeFilter = 'otp';
+    filterOtpBtn.classList.add('active');
+    if (filterAllBtn) filterAllBtn.classList.remove('active');
+    renderMessages();
   });
 }
 

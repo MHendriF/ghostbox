@@ -1,12 +1,15 @@
 import PostalMime from 'postal-mime';
 import type { D1Database } from '@cloudflare/workers-types';
 import { createInbox, inboxExists, insertMessage } from './db/queries';
+import { sendTelegramNotification } from './utils/telegram';
 
 export interface EmailHandlerEnv {
   DB: D1Database;
   MAIL_DOMAIN: string;
   MAX_EMAIL_SIZE_BYTES?: string;
   MAX_BODY_SIZE_BYTES?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
 }
 
 const DEFAULT_MAX_RAW_SIZE = 1024 * 1024; // 1 MB default
@@ -110,6 +113,25 @@ export async function handleEmail(
         from,
       })
     );
+
+    // 4. Send Telegram webhook alert if configured (100% Free)
+    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+      sendTelegramNotification(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, {
+        to,
+        from,
+        subject,
+        body,
+        messageId,
+      }).catch((tgErr) => {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            event: 'telegram_dispatch_error',
+            error: tgErr?.message || String(tgErr),
+          })
+        );
+      });
+    }
   } catch (err: any) {
     console.error(
       JSON.stringify({

@@ -64,15 +64,39 @@ function extractSessionId(c: any): string | null {
 
 const api = new Hono<{ Bindings: ApiEnv; Variables: Variables }>();
 
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isValidUuid(id: string | null | undefined): boolean {
+  if (!id || typeof id !== 'string') return false;
+  return UUID_REGEX.test(id.trim());
+}
+
+export function timingSafeEqual(a: string, b: string): boolean {
+  const strA = String(a || '');
+  const strB = String(b || '');
+  const lenA = strA.length;
+  const lenB = strB.length;
+
+  let mismatch = lenA === lenB ? 0 : 1;
+  const maxLen = Math.max(lenA, lenB);
+  for (let i = 0; i < maxLen; i++) {
+    const codeA = i < lenA ? strA.charCodeAt(i) : 0;
+    const codeB = i < lenB ? strB.charCodeAt(i) : 0;
+    mismatch |= codeA ^ codeB;
+  }
+  return mismatch === 0;
+}
+
 // ---- Global Security & CORS Headers Middleware ----
 api.use('*', async (c, next) => {
   await next();
   c.header('X-Content-Type-Options', 'nosniff');
-  c.header('Referrer-Policy', 'no-referrer');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   c.header('X-Frame-Options', 'DENY');
+  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   c.header(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests"
   );
 });
 
@@ -92,11 +116,10 @@ const requireAuthMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Va
   const providedPasscode = (c.req.header('x-auth-passcode') || '').trim();
   const providedUsername = (c.req.header('x-auth-username') || '').trim();
 
-  if (expectedUsername && providedUsername !== expectedUsername) {
-    return c.json({ error: 'Unauthorized: Invalid username or password' }, 401);
-  }
+  const isUserValid = !expectedUsername || timingSafeEqual(providedUsername, expectedUsername);
+  const isPassValid = !expectedPasscode || timingSafeEqual(providedPasscode, expectedPasscode);
 
-  if (expectedPasscode && providedPasscode !== expectedPasscode) {
+  if (!isUserValid || !isPassValid) {
     return c.json({ error: 'Unauthorized: Invalid username or password' }, 401);
   }
 
@@ -111,6 +134,9 @@ const requireSessionMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables:
   const sid = extractSessionId(c);
   if (!sid) {
     return c.json({ error: 'Missing x-session-id' }, 400);
+  }
+  if (!isValidUuid(sid)) {
+    return c.json({ error: 'Invalid x-session-id format: Must be UUID v4' }, 400);
   }
   c.set('sessionId', sid);
   return next();
@@ -144,10 +170,10 @@ api.post('/verify-passcode', async (c) => {
   const providedUsername = (body.username || '').trim();
   const providedPasscode = (body.passcode || '').trim();
 
-  if (expectedUsername && providedUsername !== expectedUsername) {
-    return c.json({ error: 'Username atau password salah' }, 401);
-  }
-  if (expectedPasscode && providedPasscode !== expectedPasscode) {
+  const isUserValid = !expectedUsername || timingSafeEqual(providedUsername, expectedUsername);
+  const isPassValid = !expectedPasscode || timingSafeEqual(providedPasscode, expectedPasscode);
+
+  if (!isUserValid || !isPassValid) {
     return c.json({ error: 'Username atau password salah' }, 401);
   }
 
@@ -176,7 +202,7 @@ api.get('/config', (c) => {
 // ---- GET /api/session ----
 api.get('/session', async (c) => {
   let sid = extractSessionId(c);
-  if (!sid) {
+  if (!sid || !isValidUuid(sid)) {
     sid = crypto.randomUUID();
   }
   await ensureSession(c.env.DB, sid);

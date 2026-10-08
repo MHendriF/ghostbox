@@ -76,6 +76,17 @@
             <span id="countdownText">15s</span>
           </div>
         </div>
+        <div class="panel-toolbar">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="Cari subjek, pengirim, atau isi pesan..." autocomplete="off" />
+            <button type="button" id="clearSearchBtn" class="clear-search-btn hidden" title="Hapus pencarian">✕</button>
+          </div>
+          <div class="filter-tabs">
+            <button type="button" id="filterAllBtn" class="filter-tab active" data-filter="all">Semua</button>
+            <button type="button" id="filterOtpBtn" class="filter-tab" data-filter="otp">🔑 Hanya OTP</button>
+          </div>
+        </div>
         <div id="messageList" class="message-list"></div>
       </section>
 
