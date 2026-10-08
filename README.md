@@ -8,11 +8,27 @@ It leverages Cloudflare Email Workers for native inbound SMTP processing, Cloudf
 
 ---
 
+## 📸 Preview
+
+![GhostBox Dashboard](docs/screenshots/dashboard.png)
+
+*GhostBox Clean UI: Live polling, rich message accordion, and one-click address copy*
+
+---
+
+![GhostBox Auth Modal](docs/screenshots/auth-modal.png)
+
+*Security Gate: Master passcode & username authentication with show/hide password toggle*
+
+---
+
 ## Table of Contents
-1. [Architecture & How It Works](#architecture--how-it-works)
-2. [Key Features & Security Hardening](#key-features--security-hardening)
-3. [System Requirements](#system-requirements)
-4. [Step-by-Step Deployment Guide](#step-by-step-deployment-guide)
+
+1. [Preview & Screenshots](#-preview)
+2. [Architecture & How It Works](#architecture--how-it-works)
+3. [Key Features & Security Hardening](#key-features--security-hardening)
+4. [System Requirements](#system-requirements)
+5. [Step-by-Step Deployment Guide](#step-by-step-deployment-guide)
    - [Step 1: Clone Repository & Install Dependencies](#step-1-clone-repository--install-dependencies)
    - [Step 2: Cloudflare CLI (Wrangler) Authentication](#step-2-cloudflare-cli-wrangler-authentication)
    - [Step 3: Create Cloudflare D1 Database](#step-3-create-cloudflare-d1-database)
@@ -22,11 +38,11 @@ It leverages Cloudflare Email Workers for native inbound SMTP processing, Cloudf
    - [Step 7: DNS Records & Domain Reputation Setup](#step-7-dns-records--domain-reputation-setup)
    - [Step 8: Build, Test, and Local Validation](#step-8-build-test-and-local-validation)
    - [Step 9: Deploy to Cloudflare Edge](#step-9-deploy-to-cloudflare-edge)
-5. [Automated Retention & Cron Purging](#automated-retention--cron-purging)
-6. [Project Structure](#project-structure)
-7. [Command Cheat Sheet](#command-cheat-sheet)
-8. [Troubleshooting](#troubleshooting)
-9. [License](#license)
+6. [Automated Retention & Cron Purging](#automated-retention--cron-purging)
+7. [Project Structure](#project-structure)
+8. [Command Cheat Sheet](#command-cheat-sheet)
+9. [Troubleshooting](#troubleshooting)
+10. [License](#license)
 
 ---
 
