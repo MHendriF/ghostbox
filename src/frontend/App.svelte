@@ -345,6 +345,7 @@
 
 <AuthModal
   open={authModalOpen}
+  appName={config.appName}
   usernameRequired={!!config.usernameRequired}
   initialUsername={api.authUsername}
   onSubmit={handleVerifyAuth}
