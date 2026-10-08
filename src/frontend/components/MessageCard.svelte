@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Message } from '../types';
   import {
-    extractOtp,
     formatRelativeTime,
     formatTimestamp,
     isHtmlContent,
@@ -21,13 +20,11 @@
 
   let { msg, isOpen, onToggle, onDelete, onDownloadEml, onShowToast }: Props = $props();
 
-  let otpCopied = $state(false);
   let bodyCopied = $state(false);
   let showQuotes = $state(false);
   let viewMode = $state<'rendered' | 'raw'>('rendered');
   let iframeHeight = $state('320px');
 
-  let otp = $derived(extractOtp(msg.subject, msg.body));
   let initial = $derived((msg.from_address || '?').trim().charAt(0).toUpperCase());
   let relativeTime = $derived(formatRelativeTime(msg.received_at));
   let fullTime = $derived(formatTimestamp(msg.received_at));
@@ -35,21 +32,6 @@
   let preparedHtml = $derived(hasHtml ? prepareEmailHtml(msg.body || '') : '');
   let thread = $derived(!hasHtml ? parseEmailThread(msg.body || '') : null);
   let mainTextHtml = $derived(thread ? linkifyText(thread.mainText) : '');
-
-  async function handleCopyOtp(e: MouseEvent) {
-    e.stopPropagation();
-    if (!otp) return;
-    try {
-      await navigator.clipboard.writeText(otp);
-      otpCopied = true;
-      onShowToast(`Code copied: ${otp}`);
-      setTimeout(() => {
-        otpCopied = false;
-      }, 1800);
-    } catch {
-      onShowToast('Failed to copy OTP code');
-    }
-  }
 
   async function handleCopyBody(e: MouseEvent) {
     e.stopPropagation();
@@ -106,23 +88,6 @@
       </div>
       <div class="message-subject-row">
         <div class="message-subject">{msg.subject || '(No subject)'}</div>
-        {#if otp}
-          <button class="otp-pill" class:copied={otpCopied} onclick={handleCopyOtp} title="Copy verification code">
-            {#if otpCopied}
-              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            {:else}
-              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="8" cy="15" r="4" />
-                <line x1="10.85" y1="12.15" x2="19" y2="4" />
-                <line x1="18" y1="5" x2="20" y2="7" />
-                <line x1="15" y1="8" x2="17" y2="10" />
-              </svg>
-            {/if}
-            <span>{otp}</span>
-          </button>
-        {/if}
       </div>
     </div>
 
@@ -320,40 +285,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
-  }
-
-  .otp-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 2px 8px;
-    background: var(--accent-subtle);
-    border: 1px solid var(--accent);
-    border-radius: var(--radius-full);
-    font-size: 11.5px;
-    font-family: var(--font-mono);
-    font-weight: 600;
-    color: var(--accent);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all var(--transition);
-  }
-
-  .otp-pill:hover {
-    background: var(--accent);
-    color: #ffffff;
-    box-shadow: var(--shadow-sm);
-  }
-
-  .otp-pill.copied {
-    background: rgba(16, 185, 129, 0.2);
-    border-color: var(--green);
-    color: var(--green);
-  }
-
-  .otp-pill .ui-icon {
-    width: 12px;
-    height: 12px;
   }
 
   .message-header-actions {

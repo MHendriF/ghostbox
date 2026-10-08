@@ -240,7 +240,7 @@ test('telegram formatter: escapes html entities and highlights otp code', () => 
     body: 'Here is your monthly tech news update.',
   };
   const textNoOtp = formatTelegramMessage(msgWithoutOtp);
-  assert.equal(textNoOtp.includes('Kode OTP:'), false);
+  assert.equal(textNoOtp.includes('OTP Code:'), false);
   assert.match(textNoOtp, /Monthly Newsletter/);
 });
 

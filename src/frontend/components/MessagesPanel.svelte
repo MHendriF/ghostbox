@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Message } from '../types';
-  import { extractOtp } from '../utils';
   import MessageCard from './MessageCard.svelte';
 
   interface Props {
@@ -22,7 +21,6 @@
   }: Props = $props();
 
   let searchQuery = $state('');
-  let activeFilter = $state<'all' | 'otp'>('all');
   let openMessageIds = $state<string[]>([]);
 
   // Auto-open first message when messages list changes
@@ -34,18 +32,12 @@
 
   let filteredMessages = $derived.by(() => {
     const q = searchQuery.toLowerCase().trim();
+    if (!q) return messages;
     return messages.filter((msg) => {
-      if (activeFilter === 'otp') {
-        const otp = extractOtp(msg.subject, msg.body);
-        if (!otp) return false;
-      }
-      if (q) {
-        const subj = (msg.subject || '').toLowerCase();
-        const from = (msg.from_address || '').toLowerCase();
-        const body = (msg.body || '').toLowerCase();
-        return subj.includes(q) || from.includes(q) || body.includes(q);
-      }
-      return true;
+      const subj = (msg.subject || '').toLowerCase();
+      const from = (msg.from_address || '').toLowerCase();
+      const body = (msg.body || '').toLowerCase();
+      return subj.includes(q) || from.includes(q) || body.includes(q);
     });
   });
 
@@ -57,9 +49,8 @@
     }
   }
 
-  function resetFilters() {
+  function resetSearch() {
     searchQuery = '';
-    activeFilter = 'all';
   }
 </script>
 
@@ -68,7 +59,7 @@
     <div class="panel-title-wrap">
       <h2>Incoming Messages</h2>
       <span class="badge">
-        {#if searchQuery || activeFilter !== 'all'}
+        {#if searchQuery}
           {filteredMessages.length} of {messages.length} messages
         {:else}
           {messages.length} messages
@@ -104,31 +95,6 @@
         </button>
       {/if}
     </div>
-
-    <div class="filter-tabs">
-      <button
-        type="button"
-        class="filter-tab"
-        class:active={activeFilter === 'all'}
-        onclick={() => (activeFilter = 'all')}
-      >
-        All
-      </button>
-      <button
-        type="button"
-        class="filter-tab"
-        class:active={activeFilter === 'otp'}
-        onclick={() => (activeFilter = 'otp')}
-      >
-        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="8" cy="15" r="4" />
-          <line x1="10.85" y1="12.15" x2="19" y2="4" />
-          <line x1="18" y1="5" x2="20" y2="7" />
-          <line x1="15" y1="8" x2="17" y2="10" />
-        </svg>
-        <span>OTP Only</span>
-      </button>
-    </div>
   </div>
 
   <div class="message-list">
@@ -154,8 +120,8 @@
           </svg>
         </div>
         <div class="title">No matching messages found</div>
-        <div class="sub">Try adjusting your search query or reset the OTP filter.</div>
-        <button class="btn btn-secondary" onclick={resetFilters}>Reset Filters</button>
+        <div class="sub">Try adjusting your search query.</div>
+        <button class="btn btn-secondary" onclick={resetSearch}>Clear Search</button>
       </div>
     {:else}
       {#each filteredMessages as msg (msg.id)}
@@ -300,39 +266,6 @@
   .clear-search-btn:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
-  }
-
-  .filter-tabs {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .filter-tab {
-    padding: 6px 14px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all var(--transition);
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .filter-tab:hover {
-    border-color: var(--border-hover);
-    color: var(--text-primary);
-  }
-
-  .filter-tab.active {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(129, 140, 248, 0.15));
-    border-color: var(--accent);
-    color: #c7d2fe;
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
   }
 
   .message-list {
