@@ -324,3 +324,72 @@ export function downloadEml(msg: Message, currentInboxAddress = ''): void {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+const AVATAR_PALETTES = [
+  { bg: 'linear-gradient(135deg, #4f46e5, #6366f1)', border: '#818cf8', text: '#ffffff' }, // Indigo
+  { bg: 'linear-gradient(135deg, #0d9488, #14b8a6)', border: '#2dd4bf', text: '#ffffff' }, // Teal
+  { bg: 'linear-gradient(135deg, #d97706, #f59e0b)', border: '#fbbf24', text: '#ffffff' }, // Amber
+  { bg: 'linear-gradient(135deg, #e11d48, #f43f5e)', border: '#fb7185', text: '#ffffff' }, // Rose
+  { bg: 'linear-gradient(135deg, #0284c7, #38bdf8)', border: '#7dd3fc', text: '#ffffff' }, // Sky
+  { bg: 'linear-gradient(135deg, #7c3aed, #8b5cf6)', border: '#a78bfa', text: '#ffffff' }, // Violet
+  { bg: 'linear-gradient(135deg, #059669, #10b981)', border: '#34d399', text: '#ffffff' }, // Emerald
+  { bg: 'linear-gradient(135deg, #c026d3, #d946ef)', border: '#e879f9', text: '#ffffff' }, // Fuchsia
+];
+
+/**
+ * Generates a deterministic high-contrast gradient palette based on sender identifier.
+ */
+export function getAvatarStyle(sender = ''): { background: string; borderColor: string; color: string } {
+  const norm = (sender || '?').toLowerCase().trim();
+  let hash = 0;
+  for (let i = 0; i < norm.length; i++) {
+    hash = (hash << 5) - hash + norm.charCodeAt(i);
+    hash |= 0;
+  }
+  const index = Math.abs(hash) % AVATAR_PALETTES.length;
+  const p = AVATAR_PALETTES[index];
+  return {
+    background: p.bg,
+    borderColor: p.border,
+    color: p.text,
+  };
+}
+
+/**
+ * Plays a gentle, pleasant synthetic chime using Web Audio API when new emails arrive.
+ * Zero external audio files or network latency.
+ */
+export function playNotificationChime(): void {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now); // D5
+    osc1.frequency.setValueAtTime(880, now + 0.12); // A5
+
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now);
+    osc2.frequency.setValueAtTime(1174.66, now + 0.12); // D6
+
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.45);
+    osc2.stop(now + 0.45);
+  } catch {
+    // Audio context may be suspended or blocked by user gesture policy
+  }
+}

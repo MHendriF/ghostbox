@@ -3,6 +3,7 @@
   import {
     formatRelativeTime,
     formatTimestamp,
+    getAvatarStyle,
     isHtmlContent,
     linkifyText,
     parseEmailThread,
@@ -26,6 +27,7 @@
   let iframeHeight = $state('320px');
 
   let initial = $derived((msg.from_address || '?').trim().charAt(0).toUpperCase());
+  let avatarStyle = $derived(getAvatarStyle(msg.from_address));
   let relativeTime = $derived(formatRelativeTime(msg.received_at));
   let fullTime = $derived(formatTimestamp(msg.received_at));
   let hasHtml = $derived(isHtmlContent(msg.body || ''));
@@ -79,7 +81,12 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="message-card-header" onclick={onToggle}>
-    <div class="sender-avatar">{initial}</div>
+    <div
+      class="sender-avatar"
+      style="background: {avatarStyle.background}; border-color: {avatarStyle.borderColor}; color: {avatarStyle.color};"
+    >
+      {initial}
+    </div>
 
     <div class="message-header-info">
       <div class="message-header-top">
@@ -230,15 +237,20 @@
     width: 36px;
     height: 36px;
     border-radius: var(--radius-full);
-    background: var(--bg-active);
-    color: var(--accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 14px;
     flex-shrink: 0;
-    border: 1px solid var(--border);
+    border: 1.5px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    transition: transform var(--transition);
+  }
+
+  .message-card-header:hover .sender-avatar {
+    transform: scale(1.05);
   }
 
   .message-header-info {

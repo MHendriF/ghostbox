@@ -124,7 +124,7 @@ async function fetchJson(url, options = {}) {
       localStorage.removeItem(PASSCODE_KEY);
       authUsername = '';
       authPasscode = '';
-      showAuthModal('Sesi berakhir atau kredensial salah. Silakan masukkan kembali.');
+      showAuthModal('Session expired or invalid credentials. Please log in again.');
     }
     let errMsg = '';
     try {
@@ -731,7 +731,7 @@ if (authForm) {
       if (authUsername) localStorage.setItem(USERNAME_KEY, authUsername);
       if (authPasscode) localStorage.setItem(PASSCODE_KEY, authPasscode);
       hideAuthModal();
-      showToast('Akses terbuka');
+      showToast('Access granted');
 
       // Boot session and inboxes after successful verification
       await ensureSession();

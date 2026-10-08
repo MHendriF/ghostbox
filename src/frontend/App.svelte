@@ -2,13 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { ApiClient } from './api';
   import type { AppConfig, Inbox, Message, ToastItem } from './types';
-  import { downloadEml } from './utils';
+  import { downloadEml, playNotificationChime } from './utils';
 
   import Header from './components/Header.svelte';
   import HeroCard from './components/HeroCard.svelte';
   import NewInboxDrawer from './components/NewInboxDrawer.svelte';
   import MessagesPanel from './components/MessagesPanel.svelte';
   import AuthModal from './components/AuthModal.svelte';
+  import QrModal from './components/QrModal.svelte';
   import Toast from './components/Toast.svelte';
 
   // Core State (Svelte 5 Runes)
@@ -26,16 +27,19 @@
   let messages = $state<Message[]>([]);
   let toasts = $state<ToastItem[]>([]);
   let showNewDrawer = $state<boolean>(false);
+  let showQrModal = $state<boolean>(false);
   let authModalOpen = $state<boolean>(false);
   let countdown = $state<number>(15);
   let isFetchingMessages = $state<boolean>(false);
 
+  let knownMessageIds = $state<Set<string>>(new Set());
+  let isInitialLoad = $state<boolean>(true);
   let tickerTimer: number | null = null;
 
   const api = new ApiClient({
     onUnauthorized: () => {
       authModalOpen = true;
-      showToast('Sesi berakhir atau kredensial salah. Silakan masukkan kembali.');
+      showToast('Session expired or invalid credentials. Please log in again.');
     },
   });
 
@@ -56,7 +60,18 @@
     if (!address || isFetchingMessages) return;
     isFetchingMessages = true;
     try {
-      messages = await api.getMessages(address);
+      const incoming = await api.getMessages(address);
+      if (!isInitialLoad) {
+        const newArrivals = incoming.filter((m) => !knownMessageIds.has(m.id));
+        if (newArrivals.length > 0) {
+          playNotificationChime();
+          const firstSubj = newArrivals[0].subject || 'No subject';
+          showToast(`New email: ${firstSubj}`);
+        }
+      }
+      messages = incoming;
+      knownMessageIds = new Set(incoming.map((m) => m.id));
+      isInitialLoad = false;
     } catch (err: any) {
       console.warn('Failed to load messages:', err);
     } finally {
@@ -92,6 +107,8 @@
       inboxes = [inbox, ...inboxes.filter((i) => i.address !== inbox.address)];
       activeAddress = inbox.address;
       messages = [];
+      knownMessageIds = new Set();
+      isInitialLoad = true;
       resetCountdown();
       if (notify) showToast(`Inbox ready: ${inbox.address}`);
     } catch (err: any) {
@@ -105,6 +122,8 @@
       inboxes = [inbox, ...inboxes.filter((i) => i.address !== inbox.address)];
       activeAddress = inbox.address;
       messages = [];
+      knownMessageIds = new Set();
+      isInitialLoad = true;
       showNewDrawer = false;
       resetCountdown();
       showToast(`Inbox created: ${inbox.address}`);
@@ -125,6 +144,8 @@
       inboxes = inboxes.filter((i) => i.address !== target);
       if (inboxes.length > 0) {
         activeAddress = inboxes[0].address;
+        isInitialLoad = true;
+        knownMessageIds = new Set();
         await loadMessages(activeAddress);
       } else {
         await handleQuickRandom(false);
@@ -139,6 +160,7 @@
     try {
       await api.deleteMessage(activeAddress, messageId);
       messages = messages.filter((m) => m.id !== messageId);
+      knownMessageIds.delete(messageId);
       showToast('Message deleted');
     } catch (err: any) {
       showToast(err.message || 'Failed to delete message');
@@ -159,6 +181,8 @@
     inboxes = [];
     activeAddress = '';
     messages = [];
+    knownMessageIds = new Set();
+    isInitialLoad = true;
     authModalOpen = true;
     showToast('Session locked');
   }
@@ -168,7 +192,7 @@
     if (ok) {
       api.setAuth(user, pass);
       authModalOpen = false;
-      showToast('Akses terbuka');
+      showToast('Access granted');
       await api.ensureSession();
       await loadInboxes();
       startTicker();
@@ -178,6 +202,8 @@
 
   function handleSelectInbox(address: string) {
     activeAddress = address;
+    isInitialLoad = true;
+    knownMessageIds = new Set();
     resetCountdown();
     loadMessages(address);
   }
@@ -195,7 +221,64 @@
     }, 1000);
   }
 
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    const target = e.target as HTMLElement | null;
+    const isEditing =
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable);
+
+    if (e.key === 'Escape') {
+      if (showQrModal) {
+        showQrModal = false;
+        return;
+      }
+      if (showNewDrawer) {
+        showNewDrawer = false;
+        return;
+      }
+      return;
+    }
+
+    if (isEditing || e.metaKey || e.ctrlKey || e.altKey) {
+      return;
+    }
+
+    if (e.key === '/') {
+      const searchInput = document.querySelector<HTMLInputElement>('.search-wrap input');
+      if (searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+      }
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      resetCountdown();
+      loadMessages();
+      showToast('Refreshing inbox...');
+    } else if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      showNewDrawer = !showNewDrawer;
+    } else if (e.key === 'c' || e.key === 'C') {
+      if (activeAddress) {
+        e.preventDefault();
+        navigator.clipboard.writeText(activeAddress).then(() => {
+          showToast('Email address copied to clipboard');
+        }).catch(() => {
+          showToast('Failed to copy email address');
+        });
+      }
+    } else if (e.key === 'q' || e.key === 'Q') {
+      if (activeAddress) {
+        e.preventDefault();
+        showQrModal = !showQrModal;
+      }
+    }
+  }
+
   onMount(async () => {
+    window.addEventListener('keydown', handleGlobalKeydown);
     try {
       const cfg = await api.getConfig();
       config = cfg;
@@ -215,6 +298,7 @@
   });
 
   onDestroy(() => {
+    window.removeEventListener('keydown', handleGlobalKeydown);
     if (tickerTimer) clearInterval(tickerTimer);
   });
 </script>
@@ -236,6 +320,7 @@
     onDeleteInbox={handleDeleteInbox}
     onLock={handleLockSession}
     onShowToast={showToast}
+    onShowQr={() => (showQrModal = true)}
   />
 
   <NewInboxDrawer
@@ -255,6 +340,15 @@
     onShowToast={showToast}
   />
 
+  <div class="keyboard-hints" aria-label="Keyboard Shortcuts">
+    <span class="hint-item"><kbd>/</kbd> search</span>
+    <span class="hint-item"><kbd>r</kbd> refresh</span>
+    <span class="hint-item"><kbd>n</kbd> new inbox</span>
+    <span class="hint-item"><kbd>c</kbd> copy address</span>
+    <span class="hint-item"><kbd>q</kbd> qr code</span>
+    <span class="hint-item"><kbd>esc</kbd> close</span>
+  </div>
+
   <footer>
     <a href="https://github.com/MHendriF" target="_blank" rel="noopener">
       Developed by <span>MHendriF</span>
@@ -269,6 +363,13 @@
   onSubmit={handleVerifyAuth}
 />
 
+<QrModal
+  open={showQrModal}
+  address={activeAddress}
+  onClose={() => (showQrModal = false)}
+  onShowToast={showToast}
+/>
+
 <Toast {toasts} />
 
 <style>
@@ -278,9 +379,39 @@
     padding: 40px 24px 80px;
   }
 
+  .keyboard-hints {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 24px;
+    padding: 8px 16px;
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    flex-wrap: wrap;
+    user-select: none;
+  }
+
+  .hint-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .hint-item kbd {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent-soft);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
+
   footer {
     text-align: center;
-    padding: 32px 0 20px;
+    padding: 24px 0 20px;
     font-size: 12px;
     font-weight: 500;
     color: var(--text-muted);
@@ -299,5 +430,11 @@
 
   footer a:hover {
     color: var(--text-secondary);
+  }
+
+  @media (max-width: 640px) {
+    .keyboard-hints {
+      display: none;
+    }
   }
 </style>

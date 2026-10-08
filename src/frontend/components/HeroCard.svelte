@@ -12,6 +12,7 @@
     onDeleteInbox: () => void;
     onLock: () => void;
     onShowToast: (msg: string) => void;
+    onShowQr: () => void;
   }
 
   let {
@@ -25,6 +26,7 @@
     onDeleteInbox,
     onLock,
     onShowToast,
+    onShowQr,
   }: Props = $props();
 
   let copied = $state(false);
@@ -83,21 +85,35 @@
         <span class="address-text">{activeAddress || 'No inbox selected'}</span>
       </div>
     </div>
-    <button class="hero-copy-btn" class:copied onclick={handleCopy} title="Copy email address to clipboard">
-      <span class="copy-icon">
-        {#if copied}
-          <svg class="ui-icon check-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        {:else}
-          <svg class="ui-icon copy-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        {/if}
-      </span>
-      <span class="copy-label">{copied ? 'Copied!' : 'Copy Address'}</span>
-    </button>
+    <div class="address-box-actions">
+      <button class="hero-icon-action-btn" onclick={onShowQr} title="Show QR code for mobile scanning (q)" aria-label="Show QR Code">
+        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
+          <path d="M14 14h3v3h-3z" />
+          <path d="M20 14v3h-3" />
+          <path d="M14 20h3v1" />
+          <path d="M20 20v1" />
+        </svg>
+        <span class="btn-text">QR</span>
+      </button>
+      <button class="hero-copy-btn" class:copied onclick={handleCopy} title="Copy email address to clipboard (c)">
+        <span class="copy-icon">
+          {#if copied}
+            <svg class="ui-icon check-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          {:else}
+            <svg class="ui-icon copy-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          {/if}
+        </span>
+        <span class="copy-label">{copied ? 'Copied!' : 'Copy Address'}</span>
+      </button>
+    </div>
   </div>
 
   <div class="hero-actions">
@@ -285,6 +301,36 @@
     color: var(--text-primary);
     letter-spacing: -0.3px;
     word-break: break-all;
+  }
+
+  .address-box-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .hero-icon-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .hero-icon-action-btn:hover {
+    background: var(--bg-active);
+    border-color: var(--accent);
+    color: var(--accent-soft);
+    transform: translateY(-1px);
   }
 
   .hero-copy-btn {
