@@ -10,29 +10,68 @@
   <body>
     <div class="app">
       <header>
-        <h1 id="appTitle">GhostBox</h1>
-        <p id="appSubtitle">Disposable inbox</p>
+        <div class="brand">
+          <div class="brand-icon">📬</div>
+          <h1 id="appTitle">GhostBox</h1>
+        </div>
+        <p id="appSubtitle">Secure & disposable temporary email service</p>
       </header>
 
-      <section class="toolbar">
-        <select id="inboxSelect"></select>
-        <button id="copyBtn">📋 Copy</button>
-        <button id="refreshBtn">🔄 Refresh</button>
-        <button id="newBtn">＋ New</button>
-        <button id="deleteBtn" class="danger">🗑 Delete</button>
+      <!-- Hero Active Email Card -->
+      <section class="hero-card" id="heroCard">
+        <div class="hero-top">
+          <div class="hero-badge">
+            <span class="live-dot"></span>
+            <span id="liveStatusText">Live Polling</span>
+          </div>
+          <div class="inbox-switch-wrapper">
+            <label for="inboxSelect">Switch Inbox:</label>
+            <select id="inboxSelect" aria-label="Switch active inbox"></select>
+          </div>
+        </div>
+
+        <div class="hero-address-box">
+          <div class="address-display">
+            <span class="address-label">Active Disposable Address</span>
+            <div class="address-text-wrap">
+              <span id="currentInbox" class="address-text">No inbox selected</span>
+            </div>
+          </div>
+          <button id="copyBtn" class="hero-copy-btn" title="Copy email address to clipboard">
+            <span class="copy-icon">📋</span>
+            <span class="copy-label">Copy Address</span>
+          </button>
+        </div>
+
+        <div class="hero-actions">
+          <button id="quickRandomBtn" class="btn btn-primary">🎲 Quick Random</button>
+          <button id="newBtn" class="btn btn-secondary">✦ Custom Inbox</button>
+          <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh</button>
+          <button id="deleteBtn" class="btn btn-danger-ghost">🗑 Delete</button>
+        </div>
       </section>
 
+      <!-- Custom Inbox Creator (collapsible drawer) -->
       <section class="new-box hidden" id="newBox">
-        <input id="localPartInput" placeholder="username atau kosongkan untuk random" />
-        <select id="domainSelect"></select>
-        <button id="createCustomBtn">✦ Create</button>
-        <button id="createRandomBtn">🎲 Random</button>
+        <div class="new-box-inner">
+          <input id="localPartInput" placeholder="username atau kosongkan untuk acak" autocomplete="off" />
+          <select id="domainSelect" aria-label="Select domain"></select>
+          <button id="createCustomBtn" class="btn btn-primary">✦ Create</button>
+          <button id="cancelNewBtn" class="btn btn-secondary">✕ Cancel</button>
+        </div>
       </section>
 
+      <!-- Messages Panel -->
       <section class="panel">
         <div class="panel-head">
-          <h2 id="currentInbox">No inbox selected</h2>
-          <span id="messageCount">0 messages</span>
+          <div class="panel-title-wrap">
+            <h2>Incoming Messages</h2>
+            <span id="messageCount" class="badge">0 messages</span>
+          </div>
+          <div class="refresh-indicator" id="refreshIndicator" title="Auto-refresh countdown">
+            <span class="spinner-dot"></span>
+            <span id="countdownText">15s</span>
+          </div>
         </div>
         <div id="messageList" class="message-list"></div>
       </section>
