@@ -21,6 +21,7 @@ export interface ApiEnv {
   APP_NAME: string;
   MAIL_DOMAIN: string;
   WEB_HOST: string;
+  AUTH_USERNAME?: string;
   AUTH_PASSCODE?: string;
   MAX_INBOXES_PER_SESSION?: string;
   AUTO_REFRESH_INTERVAL_MS?: string;
@@ -75,20 +76,28 @@ api.use('*', async (c, next) => {
   );
 });
 
-// ---- Master Passcode Authentication Middleware ----
-const requirePasscodeMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Variables }> = async (
+// ---- Master Username & Passcode Authentication Middleware ----
+const requireAuthMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Variables }> = async (
   c,
   next
 ) => {
   const expectedPasscode = (c.env.AUTH_PASSCODE || '').trim();
-  if (!expectedPasscode) {
-    // Public mode if AUTH_PASSCODE is not set
+  const expectedUsername = (c.env.AUTH_USERNAME || '').trim();
+
+  // Public mode if neither username nor passcode is set
+  if (!expectedPasscode && !expectedUsername) {
     return next();
   }
 
   const providedPasscode = (c.req.header('x-auth-passcode') || '').trim();
-  if (!providedPasscode || providedPasscode !== expectedPasscode) {
-    return c.json({ error: 'Unauthorized: Invalid or missing passcode' }, 401);
+  const providedUsername = (c.req.header('x-auth-username') || '').trim();
+
+  if (expectedUsername && providedUsername !== expectedUsername) {
+    return c.json({ error: 'Unauthorized: Invalid username or password' }, 401);
+  }
+
+  if (expectedPasscode && providedPasscode !== expectedPasscode) {
+    return c.json({ error: 'Unauthorized: Invalid username or password' }, 401);
   }
 
   return next();
@@ -107,10 +116,10 @@ const requireSessionMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables:
   return next();
 };
 
-// Protect sensitive endpoints with passcode middleware
-api.use('/session', requirePasscodeMiddleware);
-api.use('/inboxes', requirePasscodeMiddleware);
-api.use('/inboxes/*', requirePasscodeMiddleware);
+// Protect sensitive endpoints with authentication middleware
+api.use('/session', requireAuthMiddleware);
+api.use('/inboxes', requireAuthMiddleware);
+api.use('/inboxes/*', requireAuthMiddleware);
 
 // Protect inbox routes with session middleware
 api.use('/inboxes', requireSessionMiddleware);
@@ -119,23 +128,30 @@ api.use('/inboxes/*', requireSessionMiddleware);
 // ---- POST /api/verify-passcode ----
 api.post('/verify-passcode', async (c) => {
   const expectedPasscode = (c.env.AUTH_PASSCODE || '').trim();
-  if (!expectedPasscode) {
+  const expectedUsername = (c.env.AUTH_USERNAME || '').trim();
+
+  if (!expectedPasscode && !expectedUsername) {
     return c.json({ valid: true, authRequired: false });
   }
 
-  let body: { passcode?: string } = {};
+  let body: { username?: string; passcode?: string } = {};
   try {
     body = await c.req.json();
   } catch {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
+  const providedUsername = (body.username || '').trim();
   const providedPasscode = (body.passcode || '').trim();
-  if (providedPasscode === expectedPasscode) {
-    return c.json({ valid: true, authRequired: true });
+
+  if (expectedUsername && providedUsername !== expectedUsername) {
+    return c.json({ error: 'Username atau password salah' }, 401);
+  }
+  if (expectedPasscode && providedPasscode !== expectedPasscode) {
+    return c.json({ error: 'Username atau password salah' }, 401);
   }
 
-  return c.json({ error: 'Passcode salah' }, 401);
+  return c.json({ valid: true, authRequired: true });
 });
 
 // ---- GET /api/config ----
@@ -143,7 +159,8 @@ api.get('/config', (c) => {
   const domains = getDomains(c.env);
   const maxInboxes = parseInt(c.env.MAX_INBOXES_PER_SESSION || '10', 10);
   const refreshIntervalMs = parseInt(c.env.AUTO_REFRESH_INTERVAL_MS || '15000', 10);
-  const authRequired = Boolean((c.env.AUTH_PASSCODE || '').trim());
+  const authRequired = Boolean((c.env.AUTH_PASSCODE || '').trim() || (c.env.AUTH_USERNAME || '').trim());
+  const usernameRequired = Boolean((c.env.AUTH_USERNAME || '').trim());
   return c.json({
     appName: c.env.APP_NAME || 'GhostBox',
     mailDomain: domains[0] || 'example.com',
@@ -152,6 +169,7 @@ api.get('/config', (c) => {
     maxInboxesPerSession: maxInboxes,
     autoRefreshIntervalMs: refreshIntervalMs,
     authRequired,
+    usernameRequired,
   });
 });
 

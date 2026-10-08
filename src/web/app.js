@@ -13,6 +13,8 @@ const authModal = document.getElementById('authModal');
 /** @type {HTMLFormElement} */
 const authForm = /** @type {*} */ (document.getElementById('authForm'));
 /** @type {HTMLInputElement} */
+const usernameInput = /** @type {*} */ (document.getElementById('usernameInput'));
+/** @type {HTMLInputElement} */
 const passcodeInput = /** @type {*} */ (document.getElementById('passcodeInput'));
 const authError = document.getElementById('authError');
 /** @type {HTMLInputElement} */
@@ -31,12 +33,15 @@ let appConfig = {
   mailDomain: 'example.com',
   webHost: 'ghostbox.example.com',
   authRequired: false,
+  usernameRequired: false,
 };
 
 const SESSION_KEY = 'ghostbox_session_id';
 let sessionId = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tempik_session_id') || '';
 
+const USERNAME_KEY = 'ghostbox_auth_user';
 const PASSCODE_KEY = 'ghostbox_auth_passcode';
+let authUsername = localStorage.getItem(USERNAME_KEY) || '';
 let authPasscode = localStorage.getItem(PASSCODE_KEY) || '';
 
 let previousMessageCount = 0;
@@ -46,6 +51,18 @@ let openMessageIds = new Set();
 function showAuthModal(errMsg = '') {
   if (!authModal) return;
   authModal.classList.remove('hidden');
+
+  if (usernameInput) {
+    usernameInput.value = authUsername || '';
+    if (appConfig.usernameRequired === false) {
+      usernameInput.style.display = 'none';
+      usernameInput.removeAttribute('required');
+    } else {
+      usernameInput.style.display = '';
+      usernameInput.setAttribute('required', 'true');
+    }
+  }
+
   if (authError) {
     if (errMsg) {
       authError.textContent = errMsg;
@@ -54,9 +71,14 @@ function showAuthModal(errMsg = '') {
       authError.classList.add('hidden');
     }
   }
+
   if (passcodeInput) {
     passcodeInput.value = '';
-    passcodeInput.focus();
+    if (!authUsername && usernameInput && appConfig.usernameRequired !== false) {
+      usernameInput.focus();
+    } else {
+      passcodeInput.focus();
+    }
   }
 }
 
@@ -74,6 +96,9 @@ async function fetchJson(url, options = {}) {
   if (sessionId) {
     headers['x-session-id'] = sessionId;
   }
+  if (authUsername) {
+    headers['x-auth-username'] = authUsername;
+  }
   if (authPasscode) {
     headers['x-auth-passcode'] = authPasscode;
   }
@@ -85,9 +110,11 @@ async function fetchJson(url, options = {}) {
 
   if (!res.ok) {
     if (res.status === 401 && appConfig.authRequired) {
+      localStorage.removeItem(USERNAME_KEY);
       localStorage.removeItem(PASSCODE_KEY);
+      authUsername = '';
       authPasscode = '';
-      showAuthModal('Sesi berakhir atau passcode salah. Silakan masukkan kembali.');
+      showAuthModal('Sesi berakhir atau kredensial salah. Silakan masukkan kembali.');
     }
     let errMsg = '';
     try {
@@ -542,30 +569,33 @@ createCustomBtn.addEventListener('click', async () => {
   }
 });
 
-// Passcode Modal Form submission
+// Credentials Modal Form submission
 if (authForm) {
   authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const candidate = (passcodeInput ? passcodeInput.value : '').trim();
-    if (!candidate) return;
+    const candidateUser = (usernameInput ? usernameInput.value : '').trim();
+    const candidatePass = (passcodeInput ? passcodeInput.value : '').trim();
+    if (!candidatePass && !candidateUser) return;
 
     try {
       const res = await fetch('/api/verify-passcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passcode: candidate }),
+        body: JSON.stringify({ username: candidateUser, passcode: candidatePass }),
       });
 
       if (!res.ok) {
         if (authError) {
-          authError.textContent = 'Passcode salah, silakan coba lagi.';
+          authError.textContent = 'Username atau password salah, silakan coba lagi.';
           authError.classList.remove('hidden');
         }
         return;
       }
 
-      authPasscode = candidate;
-      localStorage.setItem(PASSCODE_KEY, authPasscode);
+      authUsername = candidateUser;
+      authPasscode = candidatePass;
+      if (authUsername) localStorage.setItem(USERNAME_KEY, authUsername);
+      if (authPasscode) localStorage.setItem(PASSCODE_KEY, authPasscode);
       hideAuthModal();
       showToast('🔓 Akses terbuka');
 
@@ -585,7 +615,9 @@ if (authForm) {
 // Lock Button action
 if (lockBtn) {
   lockBtn.addEventListener('click', () => {
+    localStorage.removeItem(USERNAME_KEY);
     localStorage.removeItem(PASSCODE_KEY);
+    authUsername = '';
     authPasscode = '';
     if (inboxSelect) inboxSelect.innerHTML = '';
     if (currentInbox) currentInbox.textContent = 'Akses Terkunci';
@@ -626,7 +658,11 @@ function startAutoRefresh() {
 
     if (secondsRemaining <= 0) {
       resetCountdown();
-      if (document.visibilityState === 'visible' && inboxSelect.value && (!appConfig.authRequired || authPasscode)) {
+      if (
+        document.visibilityState === 'visible' &&
+        inboxSelect.value &&
+        (!appConfig.authRequired || authPasscode)
+      ) {
         loadMessages(true);
       }
     }
@@ -639,7 +675,7 @@ async function initApp() {
     await loadConfig();
     if (appConfig.authRequired) {
       if (lockBtn) lockBtn.classList.remove('hidden');
-      if (!authPasscode) {
+      if (!authPasscode || (appConfig.usernameRequired && !authUsername)) {
         showAuthModal();
         return;
       }
@@ -650,7 +686,7 @@ async function initApp() {
   } catch (err) {
     console.error(err);
     if (err.message && err.message.includes('401')) {
-      showAuthModal('Silakan masukkan master passcode.');
+      showAuthModal('Silakan masukkan username dan password master.');
       return;
     }
     messageList.replaceChildren();

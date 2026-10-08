@@ -136,28 +136,46 @@ test('html content detection: routes HTML bodies to sandboxed iframe', () => {
   assert.equal(isHtmlContent('<img src="x" onerror="alert(1)">'), true);
 });
 
-// Test 6: Passcode authentication verification logic
-function verifyPasscode(expected, provided) {
-  const normExpected = (expected || '').trim();
-  if (!normExpected) {
+// Test 6: Credentials authentication verification logic (username + passcode)
+function verifyCredentials(expectedUser, expectedPass, providedUser, providedPass) {
+  const normExpectedPass = (expectedPass || '').trim();
+  const normExpectedUser = (expectedUser || '').trim();
+
+  if (!normExpectedPass && !normExpectedUser) {
     return { allowed: true, authRequired: false };
   }
-  const normProvided = (provided || '').trim();
-  if (normProvided && normProvided === normExpected) {
-    return { allowed: true, authRequired: true };
+
+  const normProvidedPass = (providedPass || '').trim();
+  const normProvidedUser = (providedUser || '').trim();
+
+  if (normExpectedUser && normProvidedUser !== normExpectedUser) {
+    return { allowed: false, authRequired: true, error: 'Unauthorized' };
   }
-  return { allowed: false, authRequired: true, error: 'Unauthorized' };
+  if (normExpectedPass && normProvidedPass !== normExpectedPass) {
+    return { allowed: false, authRequired: true, error: 'Unauthorized' };
+  }
+
+  return { allowed: true, authRequired: true };
 }
 
-test('passcode verification: validates secret tokens and allows public mode when unset', () => {
-  // Public mode: no passcode configured
-  assert.deepEqual(verifyPasscode('', ''), { allowed: true, authRequired: false });
-  assert.deepEqual(verifyPasscode(undefined, 'any'), { allowed: true, authRequired: false });
+test('credentials verification: validates username and passcode, supports fallback', () => {
+  // Public mode: neither configured
+  assert.deepEqual(verifyCredentials('', '', '', ''), { allowed: true, authRequired: false });
+  assert.deepEqual(verifyCredentials(undefined, undefined, 'any', 'any'), { allowed: true, authRequired: false });
 
-  // Protected mode: passcode configured
-  const secret = 'GhostAdmin2026!';
-  assert.equal(verifyPasscode(secret, 'GhostAdmin2026!').allowed, true);
-  assert.equal(verifyPasscode(secret, 'wrong-password').allowed, false);
-  assert.equal(verifyPasscode(secret, '').allowed, false);
-  assert.equal(verifyPasscode(secret, undefined).allowed, false);
+  // Protected mode: username + passcode configured
+  const expectedUser = 'admin';
+  const expectedPass = 'Smansa182@GHOST';
+
+  // Valid credentials
+  assert.equal(verifyCredentials(expectedUser, expectedPass, 'admin', 'Smansa182@GHOST').allowed, true);
+
+  // Wrong username, correct password
+  assert.equal(verifyCredentials(expectedUser, expectedPass, 'wronguser', 'Smansa182@GHOST').allowed, false);
+
+  // Correct username, wrong password
+  assert.equal(verifyCredentials(expectedUser, expectedPass, 'admin', 'wrongpass').allowed, false);
+
+  // Empty credentials
+  assert.equal(verifyCredentials(expectedUser, expectedPass, '', '').allowed, false);
 });

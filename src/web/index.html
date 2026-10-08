@@ -93,10 +93,11 @@
         <h2>GhostBox Protected</h2>
         <p>Masukkan master passcode untuk mengakses inbox sekali pakai Anda.</p>
         <form id="authForm">
-          <input type="password" id="passcodeInput" placeholder="Master Passcode" autocomplete="current-password" required />
+          <input type="text" id="usernameInput" placeholder="Username" autocomplete="username" required />
+          <input type="password" id="passcodeInput" placeholder="Master Password" autocomplete="current-password" required />
           <button type="submit" id="unlockBtn" class="btn btn-primary">🔓 Unlock Access</button>
         </form>
-        <div id="authError" class="modal-error hidden">Passcode salah, silakan coba lagi.</div>
+        <div id="authError" class="modal-error hidden">Username atau password salah, silakan coba lagi.</div>
       </div>
     </div>
 

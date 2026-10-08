@@ -32,7 +32,8 @@ MAX_BODY_SIZE_BYTES = "524288"
 AUTO_REFRESH_INTERVAL_MS = "15000"
 DEFAULT_MESSAGES_LIMIT = "50"
 MAX_MESSAGES_LIMIT = "100"
-# Master passcode protection (leave empty or unset for public mode)
+# Master credentials protection (leave empty or unset for public mode)
+AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
 AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 
 # ---- Static assets (web frontend) ----
@@ -85,6 +86,7 @@ MAX_BODY_SIZE_BYTES = "524288"
 AUTO_REFRESH_INTERVAL_MS = "15000"
 DEFAULT_MESSAGES_LIMIT = "50"
 MAX_MESSAGES_LIMIT = "100"
+AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
 AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 [[env.production.d1_databases]]
 binding = "DB"
