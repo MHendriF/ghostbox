@@ -374,4 +374,35 @@ test('uuid validation: accepts valid UUID v4 and rejects arbitrary or malicious 
   assert.equal(isValidUuid(null), false);
 });
 
+// Test 14: Telegram forum topic message_thread_id support
+import { buildTelegramPayload } from '../src/utils/telegram.ts';
+
+test('telegram forum topic: builds payload with message_thread_id when topic ID is provided', () => {
+  // Without thread ID
+  const payloadNormal = buildTelegramPayload('-1001234567890', 'Hello world');
+  assert.equal(payloadNormal.chat_id, '-1001234567890');
+  assert.equal(payloadNormal.message_thread_id, undefined);
+
+  // With numeric thread ID
+  const payloadTopicNum = buildTelegramPayload('-1001234567890', 'Topic alert', 42);
+  assert.equal(payloadTopicNum.chat_id, '-1001234567890');
+  assert.equal(payloadTopicNum.message_thread_id, 42);
+
+  // With string thread ID
+  const payloadTopicStr = buildTelegramPayload('-1001234567890', 'Topic alert', '105');
+  assert.equal(payloadTopicStr.chat_id, '-1001234567890');
+  assert.equal(payloadTopicStr.message_thread_id, 105);
+
+  // With invalid or empty thread ID
+  const payloadEmpty = buildTelegramPayload('-1001234567890', 'Alert', '');
+  assert.equal(payloadEmpty.message_thread_id, undefined);
+
+  const payloadZero = buildTelegramPayload('-1001234567890', 'Alert', 0);
+  assert.equal(payloadZero.message_thread_id, undefined);
+
+  const payloadNan = buildTelegramPayload('-1001234567890', 'Alert', 'abc');
+  assert.equal(payloadNan.message_thread_id, undefined);
+});
+
+
 

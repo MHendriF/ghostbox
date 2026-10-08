@@ -10,6 +10,7 @@ export interface EmailHandlerEnv {
   MAX_BODY_SIZE_BYTES?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_THREAD_ID?: string;
 }
 
 const DEFAULT_MAX_RAW_SIZE = 1024 * 1024; // 1 MB default
@@ -116,13 +117,18 @@ export async function handleEmail(
 
     // 4. Send Telegram webhook alert if configured (100% Free)
     if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
-      sendTelegramNotification(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, {
-        to,
-        from,
-        subject,
-        body,
-        messageId,
-      }).catch((tgErr) => {
+      sendTelegramNotification(
+        env.TELEGRAM_BOT_TOKEN,
+        env.TELEGRAM_CHAT_ID,
+        {
+          to,
+          from,
+          subject,
+          body,
+          messageId,
+        },
+        env.TELEGRAM_THREAD_ID
+      ).catch((tgErr) => {
         console.warn(
           JSON.stringify({
             level: 'warn',

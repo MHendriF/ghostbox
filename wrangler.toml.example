@@ -38,6 +38,7 @@ AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 # Telegram Webhook Alerts (Optional, 100% Free)
 # TELEGRAM_BOT_TOKEN = "<YOUR_BOT_TOKEN>"
 # TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
+# TELEGRAM_THREAD_ID = "<YOUR_TOPIC_THREAD_ID>" # Optional: Telegram Forum Topic ID
 
 # ---- Static assets (web frontend) ----
 [assets]
@@ -93,6 +94,7 @@ AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
 AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 # TELEGRAM_BOT_TOKEN = "<YOUR_BOT_TOKEN>"
 # TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
+# TELEGRAM_THREAD_ID = "<YOUR_TOPIC_THREAD_ID>" # Optional: Telegram Forum Topic ID
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "ghostbox-db"

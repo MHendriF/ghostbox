@@ -97,10 +97,33 @@ export function formatTelegramMessage(params: TelegramNotificationParams): strin
   return formatted.length > 4000 ? formatted.slice(0, 3996) + '...' : formatted;
 }
 
+export function buildTelegramPayload(
+  chatId: string,
+  text: string,
+  threadId?: string | number
+): Record<string, any> {
+  const payload: Record<string, any> = {
+    chat_id: (chatId || '').trim(),
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+  };
+
+  if (threadId !== undefined && threadId !== null && String(threadId).trim() !== '') {
+    const tid = parseInt(String(threadId).trim(), 10);
+    if (!isNaN(tid) && tid > 0) {
+      payload.message_thread_id = tid;
+    }
+  }
+
+  return payload;
+}
+
 export async function sendTelegramNotification(
   botToken: string,
   chatId: string,
-  params: TelegramNotificationParams
+  params: TelegramNotificationParams,
+  threadId?: string | number
 ): Promise<boolean> {
   const token = (botToken || '').trim();
   const chat = (chatId || '').trim();
@@ -117,18 +140,14 @@ export async function sendTelegramNotification(
   }
 
   const text = formatTelegramMessage(params);
+  const payload = buildTelegramPayload(chat, text, threadId);
 
   try {
     const url = `https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chat,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -155,3 +174,4 @@ export async function sendTelegramNotification(
     return false;
   }
 }
+
