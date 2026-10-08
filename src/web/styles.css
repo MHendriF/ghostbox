@@ -317,11 +317,33 @@ header p {
   background: var(--bg-hover);
 }
 
+.message-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.delete-msg-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition);
+}
+
+.delete-msg-btn:hover {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
 .message-item .message-meta {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -352,6 +374,15 @@ header p {
   color: var(--text-secondary);
   white-space: pre-wrap;
   line-height: 1.7;
+}
+
+.message-iframe {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  margin-top: 8px;
 }
 
 /* ---------------------------------- Empty States ---------------------------------- */

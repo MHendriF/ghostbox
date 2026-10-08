@@ -1,44 +1,103 @@
 # GhostBox — Disposable Temp Mail on Cloudflare Workers
 
-GhostBox is a **self-hosted disposable email** service that runs entirely on **Cloudflare Workers** — no VPS required. It uses Cloudflare Email Workers to receive inbound email, D1 for storage, and serves a clean web UI from the edge.
+GhostBox adalah layanan **email sekali pakai (*disposable / temp-mail*) mandiri** yang berjalan sepenuhnya di atas ekosistem **Cloudflare Workers** — tanpa memerlukan VPS, tanpa daemon Postfix, dan tanpa biaya server. 
 
-> **Repo**: [github.com/MHendriF/ghostbox](https://github.com/MHendriF/ghostbox)
+Sistem memanfaatkan Cloudflare Email Workers untuk menerima email masuk secara native, Cloudflare D1 (SQLite) untuk penyimpanan data terisolasi, Cron Triggers untuk pembersihan data otomatis berkala, dan Cloudflare Assets untuk menyajikan antarmuka web modern dari edge global.
 
----
-
-## How it works
-
-```
-Sender → Cloudflare MX → Email Worker (email handler)
-                                  │
-                                  ▼
-                          D1 Database (SQLite)
-                                  │
-                                  ▼
-                   Worker HTTP handler → Web UI + API
-```
-
-- **No VPS** — everything runs on Cloudflare's edge
-- **No Postfix** — Cloudflare Email Workers handle SMTP ingestion natively
-- **No Docker** — just `wrangler deploy`
-- **Zero cost** — fits within Cloudflare's free tier
+> **Repositori Resmi**: [github.com/MHendriF/ghostbox](https://github.com/MHendriF/ghostbox)
 
 ---
 
-## Prerequisites
+## Daftar Isi
+1. [Arsitektur & Cara Kerja](#arsitektur--cara-kerja)
+2. [Fitur Keamanan & Hardening](#fitur-keamanan--hardening)
+3. [Prasyarat Sistem](#prasyarat-sistem)
+4. [Panduan Instalasi Step-by-Step](#panduan-instalasi-step-by-step)
+   - [Langkah 1: Kloning Repositori & Instal Dependensi](#langkah-1-kloning-repositori--instal-dependensi)
+   - [Langkah 2: Autentikasi Cloudflare CLI (Wrangler)](#langkah-2-autentikasi-cloudflare-cli-wrangler)
+   - [Langkah 3: Pembuatan Database Cloudflare D1](#langkah-3-pembuatan-database-cloudflare-d1)
+   - [Langkah 4: Konfigurasi wrangler.toml](#langkah-4-konfigurasi-wranglertoml)
+   - [Langkah 5: Migrasi Skema Basis Data](#langkah-5-migrasi-skema-basis-data)
+   - [Langkah 6: Konfigurasi Email Routing Cloudflare](#langkah-6-konfigurasi-email-routing-cloudflare)
+   - [Langkah 7: Konfigurasi DNS & Proteksi Reputasi Domain](#langkah-7-konfigurasi-dns--proteksi-reputasi-domain)
+   - [Langkah 8: Pengujian Lokal & Validasi](#langkah-8-pengujian-lokal--validasi)
+   - [Langkah 9: Deployment ke Cloudflare](#langkah-9-deployment-ke-cloudflare)
+   - [Langkah 10: Uji Coba Pengiriman Email](#langkah-10-uji-coba-pengiriman-email)
+5. [Siklus Retensi & Pembersihan Otomatis (Cron)](#siklus-retensi--pembersihan-otomatis-cron)
+6. [Struktur Proyek](#struktur-proyek)
+7. [Daftar Perintah (Cheat Sheet)](#daftar-perintah-cheat-sheet)
+8. [Troubleshooting & Solusi Masalah](#troubleshooting--solusi-masalah)
+9. [Lisensi & Keamanan](#lisensi--keamanan)
 
-Before you start, you need:
+---
 
-| Requirement | Details |
+## Arsitektur & Cara Kerja
+
+```
+[ Pengirim Email ]
+        │ (SMTP)
+        ▼
+[ Cloudflare MX Records ]
+        │
+        ▼
+[ Cloudflare Email Worker ] (src/email-handler.ts)
+   ├── Verifikasi Whitelist Domain Penerima
+   ├── Pembatasan Ukuran Raw Stream (Maks 1 MB)
+   ├── Truncation Body & Subject (RFC 5322)
+   ├── Deduplikasi Message-ID (INSERT OR IGNORE)
+   └── Simpan ke Cloudflare D1 (SQLite)
+        │
+        ▼
+[ Cloudflare D1 Database ] ◄── [ Cron Triggers: Purge >24 Jam ] (src/index.ts scheduled)
+        │
+        ▼
+[ Hono REST API & Web Assets ] (src/api/routes.ts & src/web/)
+   ├── Session Isolation & Anti-Hijacking (409 Conflict)
+   ├── Strict Security Headers (CSP, nosniff, frame-ancestors)
+   └── DOM Text-Safe Rendering + Sandboxed Iframe (Zero Stored XSS)
+        │
+        ▼
+[ Pengguna di Browser ] (Web UI)
+```
+
+- **Serverless**: Berjalan di 300+ lokasi edge Cloudflare di seluruh dunia.
+- **Biaya Nol**: Masuk ke dalam batas kuota gratis Cloudflare Workers (100.000 req/hari) dan D1 (5M baris baca, 100k baris tulis/hari).
+- **Isolasi Penuh**: Tiap sesi browser anonim memiliki ID unik, mencegah pengguna lain membaca pesan Anda.
+
+---
+
+## Fitur Keamanan & Hardening
+
+Proyek ini telah diperkuat (*hardened*) sesuai rekomendasi audit keamanan komprehensif:
+
+| Vektor Keamanan | Mekanisme Proteksi GhostBox |
 |---|---|
-| **Cloudflare account** | [Sign up here](https://dash.cloudflare.com/sign-up) (free) |
-| **A domain** | Must be added to Cloudflare (nameservers pointed to Cloudflare) |
-| **Node.js** | v18 or later ([download](https://nodejs.org/)) |
-| **npm** | Comes with Node.js |
+| **Stored XSS** | Seluruh data pesan dirender menggunakan DOM API aman (`textContent`). Konten email berformat HTML diisolasi di dalam `<iframe sandbox="allow-popups">` tanpa script dan tanpa akses origin ke `localStorage`. |
+| **Security Headers** | Content Security Policy (CSP) ketat tanpa `unsafe-inline` untuk skrip, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, dan `X-Frame-Options: DENY`. |
+| **Anti-Hijacking** | Menerapkan *Strict Creator-Ownership*. Alamat inbox yang telah dibuat oleh sesi aktif ditolak jika diklaim ulang oleh sesi lain (`409 Conflict`). |
+| **Input Sanitization** | `localPart` divalidasi dengan regex ketat (`1-32` karakter alfanumerik) serta pemblokiran alamat sistem terlarang (`admin`, `abuse`, `postmaster`, dll). |
+| **Rate Limiting / Quota** | Kuota pembuatan inbox dibatasi maksimal 10 inbox per sesi aktif (`429 Too Many Requests`). |
+| **Ingestion Defense** | Email berukuran > 1 MB otomatis diabaikan, subject dipotong maksimal 998 byte (RFC 5322), dan body dipotong maksimal 500 KB sebelum write ke D1. |
+| **Deduplikasi Pesan** | Kolom `message_id UNIQUE` mencegah duplikasi pesan akibat *at-least-once delivery* dari server pengirim. |
+| **Auto-Retention** | Cron Trigger membersihkan pesan dan inbox yatim piatu lebih dari 24 jam secara otomatis setiap jam. |
 
 ---
 
-## Step 1 — Clone & install dependencies
+## Prasyarat Sistem
+
+Pastikan Anda memiliki:
+1. **Akun Cloudflare**: [Daftar akun gratis](https://dash.cloudflare.com/sign-up).
+2. **Domain Aktif**: Nameserver domain telah diarahkan ke Cloudflare (*Active on Cloudflare*).
+3. **Node.js**: Versi `18.x` atau lebih baru (`v20+` disarankan). Cek dengan `node -v`.
+4. **npm**: Versi `9.x` atau lebih baru. Cek dengan `npm -v`.
+
+---
+
+## Panduan Instalasi Step-by-Step
+
+### Langkah 1: Kloning Repositori & Instal Dependensi
+
+Buka terminal dan jalankan:
 
 ```bash
 git clone https://github.com/MHendriF/ghostbox.git
@@ -46,84 +105,50 @@ cd ghostbox
 npm install
 ```
 
+Verifikasi bahwa instalasi dependensi dan tipe berjalan tanpa kesalahan:
+
+```bash
+npm run typecheck
+npm test
+```
+
+Kedua perintah di atas harus keluar dengan status sukses (`0 errors`).
+
 ---
 
-## Step 2 — Login to Cloudflare
+### Langkah 2: Autentikasi Cloudflare CLI (Wrangler)
+
+Masuk ke akun Cloudflare Anda menggunakan Wrangler CLI:
 
 ```bash
 npx wrangler login
 ```
 
-This opens a browser window. Log in with your Cloudflare account and approve the OAuth scopes.
+Browser Anda akan terbuka secara otomatis. Klik **Allow** untuk memberikan izin otorisasi (*Workers, D1, Email Routing, Assets*).
 
-> **What scopes are needed?**
-> Wrangler will request permissions for Workers, D1, Email Routing, Pages, and more. You must approve all of them so the CLI can create the database and deploy the worker.
-
-Verify you're logged in:
+Setelah selesai, periksa status login Anda:
 
 ```bash
 npx wrangler whoami
 ```
 
----
-
-## Step 3 — Configure wrangler.toml
-
-Open `wrangler.toml` and replace the placeholder values with your own:
-
-```toml
-name = "ghostbox"
-main = "src/index.ts"
-compatibility_date = "2025-06-01"
-
-# Set to false when using your own domain (skip workers.dev)
-workers_dev = false
-
-# D1 Database — leave database_id empty for now, we'll fill it in Step 4
-[[d1_databases]]
-binding = "DB"
-database_name = "ghostbox-db"
-database_id = ""
-
-# Email Worker
-[email]
-action = "process"
-
-# Custom domain — CHANGE THIS to your own domain
-[[routes]]
-pattern = "ghostbox.YOURDOMAIN.com"
-custom_domain = true
-
-# Environment — CHANGE THESE
-[vars]
-APP_NAME = "GhostBox"
-MAIL_DOMAIN = "YOURDOMAIN.com"
-WEB_HOST = "ghostbox.YOURDOMAIN.com"
-
-# Static assets (don't change)
-[assets]
-directory = "./src/web"
-
-[observability]
-enabled = true
-```
-
-**All three `vars` + the routes `pattern` must be updated:**
-- `YOURDOMAIN.com` → your actual domain (e.g. `example.com`)
-- `ghostbox.YOURDOMAIN.com` → the subdomain for the web UI
+Pastikan terminal menampilkan nama akun dan Account ID Cloudflare Anda.
 
 ---
 
-## Step 4 — Create the D1 database
+### Langkah 3: Pembuatan Database Cloudflare D1
+
+Buat basis data D1 baru di Cloudflare:
 
 ```bash
-npx wrangler d1 create ghostbox-db
+npm run db:create
 ```
+*(Atau: `npx wrangler d1 create ghostbox-db`)*
 
-You'll see output like:
+Terminal akan menampilkan output seperti berikut:
 
-```
-✅ Successfully created DB 'ghostbox-db'
+```text
+✅ Successfully created DB 'ghostbox-db'!
 
 [[d1_databases]]
 binding = "DB"
@@ -131,204 +156,313 @@ database_name = "ghostbox-db"
 database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 ```
 
-Copy the `database_id` into your `wrangler.toml`.
+Simpan nilai `database_id` tersebut karena akan dimasukkan ke konfigurasi `wrangler.toml`.
 
 ---
 
-## Step 5 — Apply the database schema
+### Langkah 4: Konfigurasi wrangler.toml
 
-Push the schema to your **remote** D1 database on Cloudflare:
+Buka file [`wrangler.toml`](file:///d:/Work/projects/ghostbox/wrangler.toml) di editor teks Anda. Perbarui baris berikut sesuai dengan domain dan ID database Anda:
 
-```bash
-npx wrangler d1 execute ghostbox-db --remote --file=src/db/schema.sql
+```toml
+name = "ghostbox"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+workers_dev = false
+
+# ---- D1 Database ----
+[[d1_databases]]
+binding = "DB"
+database_name = "ghostbox-db"
+database_id = "GANTI_DENGAN_DATABASE_ID_DARI_LANGKAH_3"
+
+# ---- Email Worker ----
+[email]
+action = "process"
+
+# ---- Custom Domain Route ----
+[[routes]]
+pattern = "ghostbox.DOMAINANDA.com"
+custom_domain = true
+
+# ---- Variabel Lingkungan ----
+[vars]
+APP_NAME = "GhostBox"
+MAIL_DOMAIN = "DOMAINANDA.com"
+WEB_HOST = "ghostbox.DOMAINANDA.com"
+RETENTION_HOURS = "24"
+MAX_INBOXES_PER_SESSION = "10"
+MAX_EMAIL_SIZE_BYTES = "1048576"
+MAX_BODY_SIZE_BYTES = "524288"
+AUTO_REFRESH_INTERVAL_MS = "15000"
+DEFAULT_MESSAGES_LIMIT = "50"
+MAX_MESSAGES_LIMIT = "100"
+
+# ---- Static Assets & Cron ----
+[assets]
+directory = "./src/web"
+
+[triggers]
+crons = ["0 * * * *"]
+
+[observability]
+enabled = true
 ```
 
-This creates four tables:
-- `inboxes` — email addresses
-- `messages` — received emails
-- `sessions` — browser session tokens
-- `session_inboxes` — which inboxes belong to which session
+#### Tabel Variabel Lingkungan yang Dapat Dikonfigurasi:
 
-> **Note:** The `--remote` flag is important — without it, the schema only applies locally. You want it on Cloudflare's servers.
+| Variabel | Tipe | Default | Deskripsi |
+|---|---|---|---|
+| `APP_NAME` | string | `"GhostBox"` | Nama aplikasi pada judul web dan UI |
+| `MAIL_DOMAIN` | string | - | Domain penerima email (pisahkan koma jika multi-domain) |
+| `WEB_HOST` | string | - | Hostname antarmuka web |
+| `RETENTION_HOURS` | string/number | `"24"` | Durasi retensi pesan sebelum dihapus otomatis (dalam jam) |
+| `MAX_INBOXES_PER_SESSION` | string/number | `"10"` | Batas kuota jumlah inbox aktif per sesi browser |
+| `MAX_EMAIL_SIZE_BYTES` | string/number | `"1048576"` | Batas maksimal raw payload email (1 MB = 1048576) |
+| `MAX_BODY_SIZE_BYTES` | string/number | `"524288"` | Batas panjang body email sebelum disimpan ke D1 (500 KB) |
+| `AUTO_REFRESH_INTERVAL_MS` | string/number | `"15000"` | Interval auto-refresh polling pada web UI (dalam ms) |
+| `DEFAULT_MESSAGES_LIMIT` | string/number | `"50"` | Limit default pesan yang dikembalikan API |
+| `MAX_MESSAGES_LIMIT` | string/number | `"100"` | Batas tertinggi parameter query `?limit=` |
+
+> **Tips Multi-Domain**: Jika Anda ingin menerima email dari beberapa domain sekaligus, pisahkan dengan koma pada `MAIL_DOMAIN`, misalnya:
+> `MAIL_DOMAIN = "domainutama.com, domainkedua.my.id"`
 
 ---
 
-## Step 6 — Deploy the Worker
+### Langkah 5: Migrasi Skema Basis Data
+
+Jalankan perintah berikut untuk mengeksekusi skema tabel ke database Cloudflare D1 remote Anda:
 
 ```bash
-npx wrangler deploy
+npm run db:migrate
 ```
 
-This does three things:
-1. Uploads the TypeScript Worker code
-2. Uploads the static frontend files (HTML/CSS/JS) to Cloudflare Assets (edge CDN)
-3. Registers the custom domain route
+Perintah ini akan membuat dan memverifikasi tabel:
+- `inboxes` (menyimpan alamat email dan `owner_session_id`)
+- `messages` (menyimpan pesan masuk dengan `message_id UNIQUE` dan timestamp ISO)
+- `sessions` (token sesi anonim pengguna)
+- `session_inboxes` (relasi kepemilikan inbox ke sesi)
 
-After a successful deploy, you'll see:
+Untuk memverifikasi tabel yang sudah terbuat di remote D1:
 
-```
-Deployed ghostbox triggers
-  ghostbox.YOURDOMAIN.com (custom domain)
+```bash
+npx wrangler d1 execute ghostbox-db --remote --command="PRAGMA table_list;"
 ```
 
 ---
 
-## Step 7 — Setup DNS on Cloudflare
+### Langkah 6: Konfigurasi Email Routing Cloudflare
 
-### 7a. Web UI (automatic)
+1. Masuk ke **[Cloudflare Dashboard](https://dash.cloudflare.com/)**.
+2. Pilih domain Anda.
+3. Di bilah menu kiri, klik **Email Routing**.
+4. Jika belum aktif, klik **Get Started** atau **Enable Email Routing**. Cloudflare akan secara otomatis menambahkan MX records ke tabel DNS Anda.
+5. Masuk ke tab **Routing Rules**:
+   - Cari bagian **Catch-all rule**.
+   - Klik **Edit**.
+   - Atur **Action**: Pilih `Send to a Worker`.
+   - Pilih Worker: `ghostbox`.
+   - Pastikan status toggle menjadi **Active / Enabled**.
+   - Klik **Save**.
 
-Cloudflare automatically creates the DNS record for your Worker's custom domain. If it doesn't:
-
-- Go to **Cloudflare Dashboard → Workers & Pages → ghostbox → Settings → Domains**
-- The custom domain `ghostbox.YOURDOMAIN.com` should already be listed
-
-### 7b. MX Records (automatic with Email Routing)
-
-Email Routing should already be enabled on your domain. Verify:
-
-```bash
-npx wrangler email routing settings YOURDOMAIN.com
-```
-
-It should show `Enabled: true`. The catch-all rule is also automatically set up — every `*@YOURDOMAIN.com` is routed to the `ghostbox` Worker:
+Atau periksa via CLI:
 
 ```bash
-npx wrangler email routing rules list YOURDOMAIN.com
+npx wrangler email routing rules list DOMAINANDA.com
 ```
 
-Expected output:
-```
+Output yang diharapkan:
+```text
 Catch-all rule: enabled, action: worker:ghostbox
 ```
 
-### 7c. SPF Record (optional but recommended)
+---
 
-If you don't already have an SPF record, add one so emails don't get flagged as spam:
+### Langkah 7: Konfigurasi DNS & Proteksi Reputasi Domain
 
-| Type | Name | Content |
-|---|---|---|
-| TXT | `@` | `v=spf1 include:_spf.mx.cloudflare.net ~all` |
+Masuk ke **Cloudflare Dashboard → Domain Anda → DNS → Records**. Pastikan record berikut terpasang:
+
+#### 7a. Record Web UI
+Cloudflare akan membuat record custom domain secara otomatis saat Worker di-deploy. Jika belum ada, tambahkan:
+- **Type**: `CNAME`
+- **Name**: `ghostbox`
+- **Target**: `ghostbox.workers.dev` (atau domain fallback Worker Anda)
+- **Proxy Status**: Proxied (Orange cloud)
+
+#### 7b. MX Records (Inbound Mail)
+Cloudflare Email Routing biasanya membuat 3 record ini secara otomatis:
+- `MX @ route1.mx.cloudflare.net (Priority: 81)`
+- `MX @ route2.mx.cloudflare.net (Priority: 5)`
+- `MX @ route3.mx.cloudflare.net (Priority: 25)`
+
+#### 7c. SPF Record (Mencegah Spam Flagging)
+Tambahkan record TXT pada root domain:
+
+| Type | Name | Content | TTL |
+|---|---|---|---|
+| `TXT` | `@` | `v=spf1 include:_spf.mx.cloudflare.net ~all` | Auto |
+
+#### 7d. DMARC & Proteksi Reputasi (Krusial)
+Domain *disposable mail* sangat rentan menjadi sasaran spoofing. Pasang DMARC untuk melindungi reputasi domain Anda:
+
+| Type | Name | Content | TTL |
+|---|---|---|---|
+| `TXT` | `_dmarc` | `v=DMARC1; p=quarantine; sp=quarantine; rua=mailto:abuse@DOMAINANDA.com` | Auto |
+
+> **Catatan**: Buat routing alias untuk `abuse@DOMAINANDA.com` di menu Email Routing yang meneruskan email ke kotak masuk pribadi Anda agar keluhan pihak ketiga dapat segera terbaca.
 
 ---
 
-## Step 8 — Test it
+### Langkah 8: Pengujian Lokal & Validasi
 
-1. Open `https://ghostbox.YOURDOMAIN.com` in your browser
-2. Click **New** → **Random** to create a disposable address
-3. Send an email from Gmail/any provider to that address
-4. Click **Refresh** — the email appears in your inbox
-
----
-
-## Commands cheat sheet
-
-| Command | What it does |
-|---|---|
-| `npm run deploy` | Deploy Worker + static assets |
-| `npm run db:migrate` | Apply schema to production D1 |
-| `npm run db:local` | Apply schema to local D1 (for dev) |
-| `npx wrangler dev` | Run Worker locally |
-| `npx wrangler tail` | Stream live logs from production |
-| `npx wrangler d1 execute ghostbox-db --remote --command="SELECT * FROM messages LIMIT 10"` | Query the database |
-
-### Check if emails are being received
+Sebelum mempublikasikan ke production, lakukan uji validasi otomatis:
 
 ```bash
-npx wrangler d1 execute ghostbox-db --remote --command="SELECT * FROM messages ORDER BY received_at DESC LIMIT 5;"
+# 1. Jalankan pengujian keamanan & unit tests
+npm test
+
+# 2. Jalankan validasi tipe TypeScript dan Frontend JS
+npm run typecheck
+
+# 3. Validasi konfigurasi deployment wrangler tanpa publish
+npx wrangler deploy --dry-run
 ```
 
-### Watch live logs
+Jika ingin menjalankan server dev lokal:
 
 ```bash
-npx wrangler tail --format pretty
+# Siapkan database lokal
+npm run db:local
+
+# Jalankan dev server
+npm run dev
 ```
 
-Then send a test email — you'll see the Worker processing it in real time.
+Buka `http://localhost:8787` di peramban Anda.
 
 ---
 
-## Project structure
+### Langkah 9: Deployment ke Cloudflare
+
+Deploy Worker dan seluruh aset web frontend ke edge Cloudflare:
+
+```bash
+npm run deploy
+```
+
+Wrangler akan mengunggah:
+1. Logika Worker API & Ingestion Email.
+2. Aset antarmuka web ke Cloudflare Assets CDN.
+3. Cron Triggers retention.
+4. Binding database D1 dan konfigurasi rute kustom.
+
+Setelah selesai, terminal akan mengonfirmasi URL aktif:
+```text
+Deployed ghostbox triggers:
+  ghostbox.DOMAINANDA.com (custom domain)
+```
+
+---
+
+### Langkah 10: Uji Coba Pengiriman Email
+
+1. Buka peramban dan akses alamat `https://ghostbox.DOMAINANDA.com`.
+2. Klik tombol **🎲 Random** untuk membuat alamat acak (misal: `kopihujan42@DOMAINANDA.com`), atau klik **✦ Create** untuk membuat username kustom.
+3. Buka akun email pribadi Anda (Gmail, Yahoo, Outlook, dsb).
+4. Kirimkan email uji coba ke alamat GhostBox yang baru dibuat.
+5. Tunggu 3–5 detik. Antarmuka GhostBox akan melakukan auto-refresh berkala (setiap 15 detik), atau Anda dapat menekan tombol **🔄 Refresh**.
+6. Pesan akan muncul lengkap dengan pengirim, subjek, waktu penerimaan lokal, dan isi pesan yang terisolasi aman.
+
+---
+
+## Siklus Retensi & Pembersihan Otomatis (Cron)
+
+GhostBox dilengkapi dengan cron job otomatis untuk menghemat ruang D1:
+- **Jadwal**: Dijalankan setiap jam (`0 * * * *`).
+- **Masa Retensi Pesan**: Pesan yang diterima lebih dari 24 jam yang lalu akan dihapus secara permanen.
+- **Pembersihan Inbox Yatim Piatu**: Alamat inbox yang tidak lagi terhubung ke sesi mana pun dan tidak memiliki pesan akan dibersihkan.
+- **Penghapusan Manual**: Pengguna dapat menghapus pesan satu per satu melalui ikon tempat sampah (`🗑`) di antarmuka web, atau menghapus seluruh inbox via tombol **Delete**.
+
+---
+
+## Struktur Proyek
 
 ```
 ghostbox/
-├── wrangler.toml              # Worker config, D1 binding, routes, env vars
-├── package.json
-├── tsconfig.json
-├── .gitignore
-└── src/
-    ├── index.ts               # Entry point: fetch() + email() handlers
-    ├── email-handler.ts       # Parses inbound email via PostalMime → D1
-    ├── api/
-    │   └── routes.ts          # Hono router: /api/config, /api/session, /api/inboxes, /api/messages
-    ├── db/
-    │   ├── schema.sql         # D1 tables (inboxes, messages, sessions, session_inboxes)
-    │   └── queries.ts         # Typed query functions
-    ├── utils/
-    │   └── random-address.ts  # Human-like random email generator
-    └── web/
-        ├── index.html         # Frontend UI
-        ├── app.js             # Frontend logic (vanilla JS)
-        └── styles.css         # Dark theme styles
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # GitHub Actions CI (Typecheck & Security Tests)
+├── src/
+│   ├── index.ts               # Entry point Workers: fetch(), email(), scheduled()
+│   ├── email-handler.ts       # Parser email masuk (PostalMime) + limits + D1 insert
+│   ├── api/
+│   │   └── routes.ts          # Hono Router: /config, /session, /inboxes, /messages
+│   ├── db/
+│   │   ├── schema.sql         # Skema D1 SQLite + indeks unik & timestamps
+│   │   └── queries.ts         # Query database D1 terisolasi
+│   ├── utils/
+│   │   └── random-address.ts  # Generator nama inbox acak gaya Indonesia
+│   └── web/                   # Antarmuka web frontend (Vanilla JS + CSS)
+│       ├── index.html         # Struktur HTML utama
+│       ├── app.js             # Logika aplikasi client-side (safe DOM + iframe sandbox)
+│       └── styles.css         # Styling modern dark-mode
+├── test/
+│   └── security.test.js       # Test suite validasi regex, domain, dan parsing
+├── API.md                     # Dokumentasi spesifikasi REST API
+├── SECURITY.md                # Kebijakan pelaporan kerentanan keamanan
+├── code-review.md             # Hasil audit kode awal
+├── plan.md                    # Dokumentasi rencana hardening
+├── tsconfig.json              # Konfigurasi TypeScript backend worker
+├── tsconfig.web.json          # Konfigurasi TypeScript frontend client
+├── package.json               # Dependensi proyek & scripts
+└── wrangler.toml              # Konfigurasi Cloudflare Workers & D1
 ```
 
 ---
 
-## Tech stack
+## Daftar Perintah (Cheat Sheet)
 
-| Layer | Tech |
+| Perintah | Deskripsi |
 |---|---|
-| **Runtime** | Cloudflare Workers |
-| **Router** | Hono |
-| **Email parsing** | PostalMime |
-| **Database** | Cloudflare D1 (SQLite) |
-| **Static hosting** | Cloudflare Workers Assets (edge CDN) |
-| **Language** | TypeScript |
-| **CLI** | Wrangler v4 |
+| `npm run dev` | Menjalankan Worker dan antarmuka web secara lokal |
+| `npm test` | Menjalankan automated test suite verifikasi keamanan |
+| `npm run typecheck` | Memvalidasi tipe TypeScript backend dan frontend sekaligus |
+| `npm run deploy` | Melakukan deployment production ke Cloudflare Workers |
+| `npm run db:migrate` | Menerapkan skema SQL ke database D1 remote di Cloudflare |
+| `npm run db:local` | Menerapkan skema SQL ke database D1 lokal untuk pengujian |
+| `npx wrangler tail` | Menampilkan live streaming log Worker secara real-time |
+| `npx wrangler d1 execute ghostbox-db --remote --command="SELECT COUNT(*) FROM messages;"` | Menghitung total pesan di database remote |
 
 ---
 
-## Troubleshooting
+## Troubleshooting & Solusi Masalah
 
-### "This site can't be reached / DNS_PROBE_FINISHED_NXDOMAIN"
+### 1. `DNS_PROBE_FINISHED_NXDOMAIN` saat membuka URL Web
+- **Penyebab**: Propagasi DNS domain belum selesai atau nameserver domain belum diarahkan ke Cloudflare.
+- **Solusi**: Periksa dengan `dig +short DOMAINANDA.com NS`. Pastikan nameserver yang muncul berakhiran `.ns.cloudflare.com`.
 
-Your domain's nameservers are not pointed to Cloudflare, or the DNS record hasn't propagated yet. Check:
+### 2. Email tidak masuk ke antarmuka web
+- **Penyebab A**: Catch-all rule pada Email Routing belum diarahkan ke Worker `ghostbox`.
+  - **Cek**: Masuk ke Cloudflare Dashboard → Email Routing → Routing Rules → Pastikan Catch-all Rule aktif dan diarahkan ke Worker `ghostbox`.
+- **Penyebab B**: Email berukuran lebih dari 1 MB (otomatis di-drop untuk proteksi memori D1).
+- **Penyebab C**: Pantau log saat email dikirim:
+  ```bash
+  npx wrangler tail --format pretty
+  ```
 
-```bash
-dig +short YOURDOMAIN.com NS
-```
+### 3. Error `Address already registered by another session` (HTTP 409)
+- **Penyebab**: Fitur *Anti-Hijacking* aktif. Alamat username kustom yang Anda minta sudah pernah dibuat oleh browser/sesi lain.
+- **Solusi**: Gunakan nama username kustom lain atau buat alamat acak baru.
 
-Should show `*.ns.cloudflare.com`. Propagation can take up to 24 hours after changing nameservers.
-
-### Emails not appearing in the web UI
-
-1. The email was received but the inbox hasn't been linked to your browser session. Click **New** → type the exact local-part → click **Create** to claim it.
-2. Check the database:
-   ```bash
-   npx wrangler d1 execute ghostbox-db --remote --command="SELECT * FROM messages ORDER BY received_at DESC LIMIT 5;"
-   ```
-3. Check live logs:
-   ```bash
-   npx wrangler tail --format pretty
-   ```
-
-### "Unexpected fields found in top-level field: email"
-
-This is a known wrangler warning — it's cosmetic. The `[email]` config works fine. Cloudflare is still stabilizing the Email Worker integration.
-
-### Wrangler version mismatch
-
-This project uses **Wrangler v4**. If you're on v3:
-
-```bash
-npm install --save-dev wrangler@4
-```
+### 4. Error `Session inbox limit reached` (HTTP 429)
+- **Penyebab**: Batas kuota proteksi 10 inbox per sesi tercapai.
+- **Solusi**: Hapus salah satu inbox lama yang tidak terpakai menggunakan tombol **🗑 Delete** pada antarmuka web.
 
 ---
 
-## License
+## Lisensi & Keamanan
 
-MIT
+- **Lisensi**: [MIT License](LICENSE)
+- **Kebijakan Keamanan**: Lihat [SECURITY.md](SECURITY.md) untuk pedoman pelaporan kerentanan.
 
----
-
-Developer by [mhendrif](https://github.com/MHendriF)
+Dikembangkan oleh [MHendriF](https://github.com/MHendriF).

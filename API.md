@@ -168,9 +168,13 @@ Creates a new inbox (or claims an existing one) and links it to your session.
 |---|---|---|
 | `400` | `Missing x-session-id` | No session header provided |
 | `400` | `Invalid domain: ...` | Requested domain is not in the allowed list. Check `GET /config`'s `mailDomains`. |
+| `400` | `Invalid localPart...` | `localPart` violates format (1-32 chars alphanumeric, dots, underscores, hyphens). |
+| `400` | `Reserved localPart...` | `localPart` is a reserved system address (e.g. `admin`, `abuse`, `postmaster`). |
+| `409` | `Address already registered by another session` | The requested address is already owned by another active session. |
 
 **Notes**
-- If the address already exists, it simply links the existing inbox to your session
+- If the address already exists and is owned by your session, it returns the existing inbox
+- Claiming an address owned by another session is blocked with `409 Conflict`
 - Random addresses are human-readable Indonesian-style (e.g. `kopihujan42`, `bulanbiru17`)
 - The generator checks the actual database for uniqueness — it never creates duplicates, even across different sessions
 
@@ -270,7 +274,47 @@ Fetches all messages for a given inbox. The inbox must be linked to your session
 **Usage**
 
 ```bash
-curl -s "https://YOUR_DOMAIN/api/inboxes/test123%40example.com/messages" \
+curl -s "https://YOUR_DOMAIN/api/inboxes/test123%40example.com/messages?limit=20" \
+  -H "x-session-id: 550e8400-e29b-41d4-a716-446655440000"
+```
+
+---
+
+### DELETE `/api/inboxes/:address/messages/:id`
+
+Deletes a specific message from an inbox. The inbox must be linked to your session.
+
+**Headers**
+
+| Header | Required | Description |
+|---|---|---|
+| `x-session-id` | **Yes** | Session ID |
+
+**Path Parameters**
+
+| Param | Description |
+|---|---|
+| `address` | Full email address, URI-encoded |
+| `id` | Message ID (e.g. `msg_...`) |
+
+**Response** `200 OK`
+
+```json
+{ "ok": true }
+```
+
+**Errors**
+
+| Status | Message | Meaning |
+|---|---|---|
+| `400` | `Missing x-session-id` | No session header |
+| `403` | `Inbox not in this session` | The inbox is not linked to your session |
+| `404` | `Message not found` | The message does not exist or has already been deleted |
+
+**Usage**
+
+```bash
+curl -s -X DELETE "https://YOUR_DOMAIN/api/inboxes/test123%40example.com/messages/msg_12345" \
   -H "x-session-id: 550e8400-e29b-41d4-a716-446655440000"
 ```
 

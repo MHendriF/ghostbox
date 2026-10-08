@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "test": "node --test test/security.test.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.web.json",
     "db:create": "wrangler d1 create ghostbox-db",
     "db:migrate": "wrangler d1 execute ghostbox-db --file=src/db/schema.sql",
     "db:local": "wrangler d1 execute ghostbox-db --local --file=src/db/schema.sql"
