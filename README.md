@@ -4,7 +4,7 @@ GhostBox is a modern, high-performance **disposable temporary email service** bu
 
 It leverages Cloudflare Email Workers for native inbound SMTP processing, Cloudflare D1 (serverless SQLite) for isolated storage, Cron Triggers for automated message purging, and a **Svelte 5 Runes SPA** bundled with Vite served globally from Cloudflare Edge Assets.
 
-> **Official Repository**: [github.com/MHendriF/ghostbox](https://github.com/MHendriF/ghostbox)  
+> **Official Repository**: [github.com/MHendriF/ghostbox](https://github.com/MHendriF/ghostbox)
 
 ---
 
