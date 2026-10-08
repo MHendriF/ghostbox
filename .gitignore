@@ -6,3 +6,4 @@ dist/
 .DS_Store
 wrangler.toml*
 !wrangler.toml.example
+scratch/
