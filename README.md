@@ -150,9 +150,8 @@ binding = "DB"
 database_name = "ghostbox-db"
 database_id = "YOUR_D1_DATABASE_ID"
 
-# ---- Email Worker ----
-[email]
-action = "process"
+# ---- Email Routing Worker ----
+# Inbound emails are routed via Cloudflare Dashboard -> Email Routing -> Catch-all rule -> Send to Worker (ghostbox)
 
 # ---- Custom Domain Route ----
 [[routes]]

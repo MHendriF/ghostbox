@@ -2,7 +2,7 @@ name = "ghostbox"
 main = "src/index.ts"
 compatibility_date = "2025-10-01"
 
-# Set workers_dev to false when using your own domain
+# Set workers_dev to false when using your own custom domain
 workers_dev = false
 
 # ---- D1 Database ----
@@ -11,9 +11,8 @@ binding = "DB"
 database_name = "ghostbox-db"
 database_id = "<YOUR_D1_DATABASE_ID>"
 
-# ---- Email Worker ----
-[email]
-action = "process"
+# ---- Email Routing Worker ----
+# Inbound emails are routed directly via Cloudflare Dashboard -> Email Routing -> Catch-all rule -> Send to Worker (ghostbox)
 
 # ---- Custom domain routes ----
 [[routes]]
@@ -32,9 +31,11 @@ MAX_BODY_SIZE_BYTES = "524288"
 AUTO_REFRESH_INTERVAL_MS = "15000"
 DEFAULT_MESSAGES_LIMIT = "50"
 MAX_MESSAGES_LIMIT = "100"
+
 # Master credentials protection (leave empty or unset for public mode)
 AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
 AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
+
 # Telegram Webhook Alerts (Optional, 100% Free)
 # TELEGRAM_BOT_TOKEN = "<YOUR_BOT_TOKEN>"
 # TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
@@ -45,57 +46,9 @@ AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 directory = "./dist"
 
 # ---- Scheduled cron triggers (retention cleanup every hour) ----
-[triggers]
-crons = ["0 * * * *"]
+# [triggers]
+# crons = ["0 * * * *"]
 
 # ---- Observability ----
 [observability]
 enabled = true
-
-# ---- Staging Environment ----
-[env.staging]
-name = "ghostbox-staging"
-workers_dev = true
-[env.staging.vars]
-APP_NAME = "GhostBox (Staging)"
-MAIL_DOMAIN = "staging.example.com"
-WEB_HOST = "ghostbox-staging.example.com"
-RETENTION_HOURS = "12"
-MAX_INBOXES_PER_SESSION = "15"
-MAX_EMAIL_SIZE_BYTES = "1048576"
-MAX_BODY_SIZE_BYTES = "524288"
-AUTO_REFRESH_INTERVAL_MS = "10000"
-DEFAULT_MESSAGES_LIMIT = "25"
-MAX_MESSAGES_LIMIT = "50"
-[[env.staging.d1_databases]]
-binding = "DB"
-database_name = "ghostbox-staging-db"
-database_id = "<YOUR_STAGING_D1_DATABASE_ID>"
-
-# ---- Production Environment ----
-[env.production]
-name = "ghostbox"
-workers_dev = false
-[[env.production.routes]]
-pattern = "ghostbox.example.com"
-custom_domain = true
-[env.production.vars]
-APP_NAME = "GhostBox"
-MAIL_DOMAIN = "example.com"
-WEB_HOST = "ghostbox.example.com"
-RETENTION_HOURS = "24"
-MAX_INBOXES_PER_SESSION = "15"
-MAX_EMAIL_SIZE_BYTES = "1048576"
-MAX_BODY_SIZE_BYTES = "524288"
-AUTO_REFRESH_INTERVAL_MS = "15000"
-DEFAULT_MESSAGES_LIMIT = "50"
-MAX_MESSAGES_LIMIT = "100"
-AUTH_USERNAME = "<YOUR_ADMIN_USERNAME>"
-AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
-# TELEGRAM_BOT_TOKEN = "<YOUR_BOT_TOKEN>"
-# TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
-# TELEGRAM_THREAD_ID = "<YOUR_TOPIC_THREAD_ID>" # Optional: Telegram Forum Topic ID
-[[env.production.d1_databases]]
-binding = "DB"
-database_name = "ghostbox-db"
-database_id = "<YOUR_PRODUCTION_D1_DATABASE_ID>"
