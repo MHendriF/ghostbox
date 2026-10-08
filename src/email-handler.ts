@@ -81,7 +81,10 @@ export async function handleEmail(
     const rawSubject = parsed.subject || '(no subject)';
     const subject = rawSubject.slice(0, MAX_SUBJECT_LEN);
 
-    const rawBody = parsed.text?.trim() || parsed.html || '';
+    const rawHtml = parsed.html?.trim();
+    const rawText = parsed.text?.trim();
+    // Prioritize HTML for full visual fidelity and nested reply structures; fallback to plain text
+    const rawBody = rawHtml || rawText || '';
     const body = rawBody.slice(0, maxBodyLen);
 
     const messageId = parsed.messageId ? String(parsed.messageId).trim() : null;
@@ -125,7 +128,8 @@ export async function handleEmail(
             to,
             from,
             subject,
-            body,
+            // Prefer clean plain text for Telegram notification preview, falling back to body
+            body: rawText || body,
             messageId,
           },
           env.TELEGRAM_THREAD_ID

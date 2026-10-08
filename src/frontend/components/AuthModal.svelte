@@ -27,12 +27,12 @@
     try {
       const ok = await onSubmit(username.trim(), passcode.trim());
       if (!ok) {
-        errorMessage = 'Username atau password salah, silakan coba lagi.';
+        errorMessage = 'Invalid username or passcode. Please try again.';
       } else {
         passcode = '';
       }
     } catch (err: any) {
-      errorMessage = err?.message || 'Gagal memverifikasi kredensial.';
+      errorMessage = err?.message || 'Failed to verify credentials.';
     } finally {
       loading = false;
     }
@@ -49,7 +49,7 @@
         </svg>
       </div>
       <h2>GhostBox Protected</h2>
-      <p>Masukkan master passcode untuk mengakses inbox sekali pakai Anda.</p>
+      <p>Enter credentials to access your disposable inboxes.</p>
       <form onsubmit={handleSubmit}>
         {#if usernameRequired}
           <input

@@ -58,7 +58,7 @@
     try {
       messages = await api.getMessages(address);
     } catch (err: any) {
-      console.warn('Gagal memuat pesan:', err);
+      console.warn('Failed to load messages:', err);
     } finally {
       isFetchingMessages = false;
     }
@@ -82,7 +82,7 @@
         await loadMessages(activeAddress);
       }
     } catch (err: any) {
-      console.warn('Gagal memuat inbox:', err);
+      console.warn('Failed to load inboxes:', err);
     }
   }
 
@@ -93,9 +93,9 @@
       activeAddress = inbox.address;
       messages = [];
       resetCountdown();
-      if (notify) showToast(`Inbox siap: ${inbox.address}`);
+      if (notify) showToast(`Inbox ready: ${inbox.address}`);
     } catch (err: any) {
-      showToast(err.message || 'Gagal membuat inbox acak');
+      showToast(err.message || 'Failed to create random inbox');
     }
   }
 
@@ -107,21 +107,21 @@
       messages = [];
       showNewDrawer = false;
       resetCountdown();
-      showToast(`Inbox dibuat: ${inbox.address}`);
+      showToast(`Inbox created: ${inbox.address}`);
     } catch (err: any) {
-      showToast(err.message || 'Gagal membuat custom inbox');
+      showToast(err.message || 'Failed to create custom inbox');
     }
   }
 
   async function handleDeleteInbox() {
     if (!activeAddress) return;
     const target = activeAddress;
-    if (!confirm(`Hapus inbox ${target}? Seluruh pesan di dalamnya akan terhapus permanen.`)) {
+    if (!confirm(`Delete inbox ${target}? All messages in this inbox will be permanently deleted.`)) {
       return;
     }
     try {
       await api.deleteInbox(target);
-      showToast(`Inbox ${target} dihapus`);
+      showToast(`Inbox ${target} deleted`);
       inboxes = inboxes.filter((i) => i.address !== target);
       if (inboxes.length > 0) {
         activeAddress = inboxes[0].address;
@@ -130,7 +130,7 @@
         await handleQuickRandom(false);
       }
     } catch (err: any) {
-      showToast(err.message || 'Gagal menghapus inbox');
+      showToast(err.message || 'Failed to delete inbox');
     }
   }
 
@@ -139,18 +139,18 @@
     try {
       await api.deleteMessage(activeAddress, messageId);
       messages = messages.filter((m) => m.id !== messageId);
-      showToast('Pesan berhasil dihapus');
+      showToast('Message deleted');
     } catch (err: any) {
-      showToast(err.message || 'Gagal menghapus pesan');
+      showToast(err.message || 'Failed to delete message');
     }
   }
 
   function handleDownloadEml(msg: Message) {
     try {
       downloadEml(msg, activeAddress);
-      showToast('File .eml berhasil diunduh');
+      showToast('.eml file downloaded');
     } catch {
-      showToast('Gagal mengunduh file .eml');
+      showToast('Failed to download .eml file');
     }
   }
 
@@ -160,7 +160,7 @@
     activeAddress = '';
     messages = [];
     authModalOpen = true;
-    showToast('Sesi telah dikunci');
+    showToast('Session locked');
   }
 
   async function handleVerifyAuth(user: string, pass: string): Promise<boolean> {
@@ -257,7 +257,7 @@
 
   <footer>
     <a href="https://github.com/MHendriF" target="_blank" rel="noopener">
-      Developer by <span>MHendriF</span>
+      Developed by <span>MHendriF</span>
     </a>
   </footer>
 </div>

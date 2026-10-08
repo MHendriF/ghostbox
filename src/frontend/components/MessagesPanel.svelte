@@ -69,7 +69,7 @@
       <h2>Incoming Messages</h2>
       <span class="badge">
         {#if searchQuery || activeFilter !== 'all'}
-          {filteredMessages.length} dari {messages.length} pesan
+          {filteredMessages.length} of {messages.length} messages
         {:else}
           {messages.length} messages
         {/if}
@@ -92,11 +92,11 @@
       <input
         type="text"
         bind:value={searchQuery}
-        placeholder="Cari subjek, pengirim, atau isi pesan..."
+        placeholder="Search subject, sender, or content..."
         autocomplete="off"
       />
       {#if searchQuery}
-        <button type="button" class="clear-search-btn" onclick={() => (searchQuery = '')} title="Hapus pencarian">
+        <button type="button" class="clear-search-btn" onclick={() => (searchQuery = '')} title="Clear search">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
@@ -112,7 +112,7 @@
         class:active={activeFilter === 'all'}
         onclick={() => (activeFilter = 'all')}
       >
-        Semua
+        All
       </button>
       <button
         type="button"
@@ -126,7 +126,7 @@
           <line x1="18" y1="5" x2="20" y2="7" />
           <line x1="15" y1="8" x2="17" y2="10" />
         </svg>
-        <span>Hanya OTP</span>
+        <span>OTP Only</span>
       </button>
     </div>
   </div>
@@ -140,9 +140,9 @@
             <polyline points="22,6 12,13 2,6" />
           </svg>
         </div>
-        <div class="title">Menunggu email masuk...</div>
+        <div class="title">Waiting for incoming emails...</div>
         <div class="sub">
-          Kirim email ke {activeInboxAddress || 'alamat aktif'}. Email akan muncul secara otomatis dalam hitungan detik.
+          Send an email to {activeInboxAddress || 'the active address'}. Messages will appear automatically within seconds.
         </div>
       </div>
     {:else if filteredMessages.length === 0}
@@ -153,9 +153,9 @@
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
         </div>
-        <div class="title">Tidak ada pesan yang sesuai</div>
-        <div class="sub">Coba ubah kata kunci pencarian atau matikan filter OTP.</div>
-        <button class="btn btn-secondary" onclick={resetFilters}>Reset Filter</button>
+        <div class="title">No matching messages found</div>
+        <div class="sub">Try adjusting your search query or reset the OTP filter.</div>
+        <button class="btn btn-secondary" onclick={resetFilters}>Reset Filters</button>
       </div>
     {:else}
       {#each filteredMessages as msg (msg.id)}

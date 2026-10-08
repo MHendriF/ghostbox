@@ -34,12 +34,12 @@
     try {
       await navigator.clipboard.writeText(activeAddress);
       copied = true;
-      onShowToast('Alamat email disalin ke clipboard');
+      onShowToast('Email address copied to clipboard');
       setTimeout(() => {
         copied = false;
       }, 1800);
     } catch {
-      onShowToast('Gagal menyalin ke clipboard');
+      onShowToast('Failed to copy to clipboard');
     }
   }
 </script>
@@ -52,7 +52,7 @@
         <span>Live Polling</span>
       </div>
       {#if authRequired}
-        <button class="lock-btn" onclick={onLock} title="Kunci sesi / Logout">
+        <button class="lock-btn" onclick={onLock} title="Lock session / Logout">
           <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />

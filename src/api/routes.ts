@@ -174,7 +174,7 @@ api.post('/verify-passcode', async (c) => {
   const isPassValid = !expectedPasscode || timingSafeEqual(providedPasscode, expectedPasscode);
 
   if (!isUserValid || !isPassValid) {
-    return c.json({ error: 'Username atau password salah' }, 401);
+    return c.json({ error: 'Invalid username or passcode' }, 401);
   }
 
   return c.json({ valid: true, authRequired: true });

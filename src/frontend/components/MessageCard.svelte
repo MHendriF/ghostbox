@@ -1,6 +1,14 @@
 <script lang="ts">
   import type { Message } from '../types';
-  import { extractOtp, formatRelativeTime, formatTimestamp, isHtmlContent } from '../utils';
+  import {
+    extractOtp,
+    formatRelativeTime,
+    formatTimestamp,
+    isHtmlContent,
+    linkifyText,
+    parseEmailThread,
+    prepareEmailHtml,
+  } from '../utils';
 
   interface Props {
     msg: Message;
@@ -14,12 +22,19 @@
   let { msg, isOpen, onToggle, onDelete, onDownloadEml, onShowToast }: Props = $props();
 
   let otpCopied = $state(false);
+  let bodyCopied = $state(false);
+  let showQuotes = $state(false);
+  let viewMode = $state<'rendered' | 'raw'>('rendered');
+  let iframeHeight = $state('320px');
 
   let otp = $derived(extractOtp(msg.subject, msg.body));
   let initial = $derived((msg.from_address || '?').trim().charAt(0).toUpperCase());
   let relativeTime = $derived(formatRelativeTime(msg.received_at));
   let fullTime = $derived(formatTimestamp(msg.received_at));
   let hasHtml = $derived(isHtmlContent(msg.body || ''));
+  let preparedHtml = $derived(hasHtml ? prepareEmailHtml(msg.body || '') : '');
+  let thread = $derived(!hasHtml ? parseEmailThread(msg.body || '') : null);
+  let mainTextHtml = $derived(thread ? linkifyText(thread.mainText) : '');
 
   async function handleCopyOtp(e: MouseEvent) {
     e.stopPropagation();
@@ -27,12 +42,43 @@
     try {
       await navigator.clipboard.writeText(otp);
       otpCopied = true;
-      onShowToast(`Kode disalin: ${otp}`);
+      onShowToast(`Code copied: ${otp}`);
       setTimeout(() => {
         otpCopied = false;
       }, 1800);
     } catch {
-      onShowToast('Gagal menyalin kode OTP');
+      onShowToast('Failed to copy OTP code');
+    }
+  }
+
+  async function handleCopyBody(e: MouseEvent) {
+    e.stopPropagation();
+    if (!msg.body) return;
+    try {
+      await navigator.clipboard.writeText(msg.body);
+      bodyCopied = true;
+      onShowToast('Message content copied');
+      setTimeout(() => {
+        bodyCopied = false;
+      }, 1800);
+    } catch {
+      onShowToast('Failed to copy message content');
+    }
+  }
+
+  function handleIframeLoad(e: Event) {
+    const iframe = e.currentTarget as HTMLIFrameElement;
+    try {
+      if (iframe && iframe.contentDocument && iframe.contentDocument.documentElement) {
+        const scrollHeight =
+          iframe.contentDocument.documentElement.scrollHeight ||
+          iframe.contentDocument.body.scrollHeight;
+        if (scrollHeight > 50) {
+          iframeHeight = `${Math.min(Math.max(scrollHeight + 28, 150), 2500)}px`;
+        }
+      }
+    } catch {
+      iframeHeight = '480px';
     }
   }
 
@@ -59,9 +105,9 @@
         <div class="message-time" title={fullTime}>{relativeTime}</div>
       </div>
       <div class="message-subject-row">
-        <div class="message-subject">{msg.subject || '(Tanpa subjek)'}</div>
+        <div class="message-subject">{msg.subject || '(No subject)'}</div>
         {#if otp}
-          <button class="otp-pill" class:copied={otpCopied} onclick={handleCopyOtp} title="Salin kode verifikasi">
+          <button class="otp-pill" class:copied={otpCopied} onclick={handleCopyOtp} title="Copy verification code">
             {#if otpCopied}
               <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="20 6 9 17 4 12" />
@@ -81,14 +127,14 @@
     </div>
 
     <div class="message-header-actions">
-      <button class="icon-btn download-icon" onclick={handleDownload} title="Unduh file pesan (.EML)">
+      <button class="icon-btn download-icon" onclick={handleDownload} title="Download message (.EML)">
         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="7 10 12 15 17 10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
       </button>
-      <button class="icon-btn delete-icon" onclick={handleDelete} title="Hapus pesan">
+      <button class="icon-btn delete-icon" onclick={handleDelete} title="Delete message">
         <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6" />
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -105,13 +151,87 @@
   {#if isOpen}
     <div class="message-card-body">
       {#if msg.body}
-        {#if hasHtml}
-          <iframe class="message-iframe" sandbox="allow-popups" srcdoc={msg.body} title="Email content preview"></iframe>
+        <div class="message-body-toolbar">
+          <div class="toolbar-left">
+            <span class="format-badge" class:is-html={hasHtml}>
+              {hasHtml ? 'HTML Email' : 'Plain Text'}
+            </span>
+            {#if hasHtml}
+              <button
+                class="toolbar-toggle-btn"
+                onclick={() => (viewMode = viewMode === 'rendered' ? 'raw' : 'rendered')}
+                title="Toggle between rendered HTML and raw source"
+              >
+                {viewMode === 'rendered' ? 'View Raw' : 'View Rendered'}
+              </button>
+            {/if}
+          </div>
+
+          <div class="toolbar-right">
+            <button class="toolbar-btn" onclick={handleCopyBody} title="Copy message body">
+              <svg class="ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              <span>{bodyCopied ? 'Copied' : 'Copy Body'}</span>
+            </button>
+          </div>
+        </div>
+
+        {#if viewMode === 'raw'}
+          <div class="message-raw-box">{msg.body}</div>
+        {:else if hasHtml}
+          <iframe
+            class="message-iframe"
+            sandbox="allow-same-origin allow-popups"
+            srcdoc={preparedHtml}
+            onload={handleIframeLoad}
+            style="height: {iframeHeight};"
+            title="Email content preview"
+          ></iframe>
         {:else}
-          <div class="message-text-content">{msg.body}</div>
+          <div class="message-text-content">
+            {#if mainTextHtml}
+              <div class="primary-text-body">{@html mainTextHtml}</div>
+            {:else}
+              <div class="primary-text-body">(Message without main text)</div>
+            {/if}
+
+            {#if thread && thread.hasQuotes}
+              <div class="email-quotes-wrapper">
+                <button
+                  class="quote-toggle-btn"
+                  onclick={() => (showQuotes = !showQuotes)}
+                  title="Toggle quoted reply history"
+                >
+                  <span class="quote-dots">···</span>
+                  <span class="quote-toggle-label">
+                    {showQuotes
+                      ? 'Hide quoted history'
+                      : `Show quoted history (${thread.quoteItems.length} lines)`}
+                  </span>
+                </button>
+
+                {#if showQuotes}
+                  <div class="email-quotes-box">
+                    {#if thread.attribution}
+                      <div class="quote-attribution">{thread.attribution}</div>
+                    {/if}
+                    <div class="quote-items-tree">
+                      {#each thread.quoteItems as item}
+                        <div class="quote-item depth-{Math.min(item.depth, 4)}">
+                          {@html linkifyText(item.text || ' ')}
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
         {/if}
       {:else}
-        <div class="message-text-content">(Pesan kosong tanpa teks)</div>
+        <div class="message-text-content empty-msg">(Empty message)</div>
       {/if}
     </div>
   {/if}
@@ -128,35 +248,40 @@
   }
 
   .message-card-header {
-    padding: 16px 20px;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 16px;
+    padding: 16px 20px;
     cursor: pointer;
+    user-select: none;
+    transition: background-color var(--transition);
   }
 
   .message-card-header:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: var(--bg-hover);
   }
 
   .sender-avatar {
     width: 36px;
     height: 36px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(6, 182, 212, 0.2));
-    border: 1px solid rgba(99, 102, 241, 0.35);
-    color: var(--accent-soft);
+    border-radius: var(--radius-full);
+    background: var(--bg-active);
+    color: var(--accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 14px;
     flex-shrink: 0;
+    border: 1px solid var(--border);
   }
 
   .message-header-info {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .message-header-top {
@@ -164,21 +289,21 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 2px;
   }
 
   .message-from {
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 600;
     color: var(--text-primary);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .message-time {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
     flex-shrink: 0;
   }
 
@@ -191,59 +316,70 @@
   .message-subject {
     font-size: 13px;
     color: var(--text-secondary);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    flex: 1;
   }
 
   .otp-pill {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     padding: 2px 8px;
-    background: rgba(99, 102, 241, 0.15);
-    border: 1px solid rgba(99, 102, 241, 0.35);
-    border-radius: 999px;
-    color: #a5b4fc;
-    font-size: 11px;
+    background: var(--accent-subtle);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-full);
+    font-size: 11.5px;
+    font-family: var(--font-mono);
     font-weight: 600;
+    color: var(--accent);
     cursor: pointer;
-    transition: all var(--transition);
     flex-shrink: 0;
+    transition: all var(--transition);
   }
 
   .otp-pill:hover {
-    background: rgba(99, 102, 241, 0.3);
-    border-color: var(--accent-soft);
-    transform: scale(1.02);
+    background: var(--accent);
+    color: #ffffff;
+    box-shadow: var(--shadow-sm);
   }
 
   .otp-pill.copied {
     background: rgba(16, 185, 129, 0.2);
     border-color: var(--green);
-    color: var(--green-soft);
+    color: var(--green);
+  }
+
+  .otp-pill .ui-icon {
+    width: 12px;
+    height: 12px;
   }
 
   .message-header-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     flex-shrink: 0;
   }
 
   .icon-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text-tertiary);
+    background: transparent;
+    border: none;
     cursor: pointer;
     transition: all var(--transition);
-    font-size: 13px;
+  }
+
+  .icon-btn .ui-icon {
+    width: 16px;
+    height: 16px;
   }
 
   .icon-btn:hover {
@@ -265,8 +401,8 @@
   }
 
   .message-card-body {
-    padding: 0 20px 20px 70px;
-    background: rgba(0, 0, 0, 0.2);
+    padding: 0 20px 20px 72px;
+    background: rgba(0, 0, 0, 0.18);
     animation: fadeIn 200ms ease-out;
   }
 
@@ -275,25 +411,209 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
+  /* Body Toolbar */
+  .message-body-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    gap: 12px;
+  }
+
+  .toolbar-left,
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .format-badge {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: var(--radius-full);
+    background: var(--bg-active);
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  .format-badge.is-html {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--accent);
+    border-color: rgba(99, 102, 241, 0.3);
+  }
+
+  .toolbar-toggle-btn,
+  .toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .toolbar-toggle-btn:hover,
+  .toolbar-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+  }
+
+  .ui-icon-sm {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* Iframe rendering */
   .message-iframe {
     width: 100%;
-    min-height: 300px;
+    min-height: 140px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: #ffffff;
-    margin-top: 8px;
     box-shadow: var(--shadow-sm);
+    transition: height 150ms ease-in-out;
   }
 
-  .message-text-content {
-    font-size: 13px;
+  /* Raw Box */
+  .message-raw-box {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
     color: var(--text-secondary);
     white-space: pre-wrap;
-    line-height: 1.7;
-    padding: 12px 16px;
+    word-break: break-all;
+    line-height: 1.6;
+    padding: 14px;
     background: var(--bg-root);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    margin-top: 8px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  /* Text Content */
+  .message-text-content {
+    font-size: 13.5px;
+    color: var(--text-primary);
+    line-height: 1.7;
+    padding: 14px 18px;
+    background: var(--bg-root);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .message-text-content.empty-msg {
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+
+  .primary-text-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  :global(.email-inline-link) {
+    color: var(--accent);
+    text-decoration: underline;
+    word-break: break-all;
+    transition: opacity var(--transition);
+  }
+
+  :global(.email-inline-link:hover) {
+    opacity: 0.8;
+  }
+
+  /* Quoted thread hierarchy */
+  .email-quotes-wrapper {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+
+  .quote-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-active);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    padding: 3px 12px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .quote-toggle-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+  }
+
+  .quote-dots {
+    letter-spacing: 2px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .email-quotes-box {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-sm);
+    border-left: 2px solid var(--accent);
+    animation: fadeIn 150ms ease-out;
+  }
+
+  .quote-attribution {
+    font-size: 12px;
+    font-style: italic;
+    color: var(--text-tertiary);
+    margin-bottom: 8px;
+  }
+
+  .quote-items-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .quote-item {
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .quote-item.depth-1 {
+    padding-left: 4px;
+  }
+
+  .quote-item.depth-2 {
+    padding-left: 12px;
+    border-left: 2px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .quote-item.depth-3 {
+    padding-left: 20px;
+    border-left: 2px solid rgba(99, 102, 241, 0.25);
+  }
+
+  .quote-item.depth-4 {
+    padding-left: 28px;
+    border-left: 2px solid rgba(99, 102, 241, 0.4);
+  }
+
+  @media (max-width: 640px) {
+    .message-card-body {
+      padding: 0 12px 16px 12px;
+    }
   }
 </style>

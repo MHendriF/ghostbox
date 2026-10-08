@@ -67,11 +67,11 @@ export function extractOtp(subject = '', body = ''): string | null {
 export function formatTelegramMessage(params: TelegramNotificationParams): string {
   const safeTo = escapeHtml(params.to).slice(0, 100);
   const safeFrom = escapeHtml(params.from).slice(0, 100);
-  const safeSubject = escapeHtml(params.subject || '(Tanpa subjek)').slice(0, 200);
+  const safeSubject = escapeHtml(params.subject || '(No subject)').slice(0, 200);
 
   const otp = extractOtp(params.subject, params.body);
   const otpSection = otp
-    ? `\n🔑 <b>Kode OTP:</b> <code>${escapeHtml(otp)}</code>\n`
+    ? `\n🔑 <b>OTP Code:</b> <code>${escapeHtml(otp)}</code>\n`
     : '';
 
   const cleanPreview = (params.body || '')
@@ -85,11 +85,11 @@ export function formatTelegramMessage(params: TelegramNotificationParams): strin
     : '';
 
   const formatted =
-    `📬 <b>GhostBox — Pesan Masuk</b>\n` +
+    `📬 <b>GhostBox — Incoming Message</b>\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `👤 <b>Dari:</b> ${safeFrom}\n` +
-    `📥 <b>Kepada:</b> ${safeTo}\n` +
-    `📌 <b>Subjek:</b> ${safeSubject}\n` +
+    `👤 <b>From:</b> ${safeFrom}\n` +
+    `📥 <b>To:</b> ${safeTo}\n` +
+    `📌 <b>Subject:</b> ${safeSubject}\n` +
     otpSection +
     safePreview;
 

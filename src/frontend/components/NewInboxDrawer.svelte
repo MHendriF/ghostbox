@@ -36,7 +36,7 @@
       <input
         type="text"
         bind:value={localPart}
-        placeholder={`username atau kosongkan untuk acak @${selectedDomain || mailDomain}`}
+        placeholder={`username or leave empty for random @${selectedDomain || mailDomain}`}
         autocomplete="off"
         disabled={submitting}
         onkeydown={(e) => e.key === 'Enter' && handleCreate()}

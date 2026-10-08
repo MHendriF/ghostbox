@@ -124,16 +124,22 @@ test('timestamp normalization: handles non-ISO SQLite and ISO 8601 uniformly', (
 });
 
 // Test 5: HTML detection for sandboxed iframe routing
-function isHtmlContent(content) {
-  return /<[a-z][\s\S]*>/i.test(content);
-}
+import { isHtmlContent, parseEmailThread, linkifyText, prepareEmailHtml } from '../src/frontend/utils.ts';
 
-test('html content detection: routes HTML bodies to sandboxed iframe', () => {
+test('html content detection: accurately detects HTML bodies while ignoring plaintext email addresses', () => {
   assert.equal(isHtmlContent('Plain text email here'), false);
-  assert.equal(isHtmlContent('Hello <world>'), true);
+  // Email addresses in plaintext must NOT trigger HTML detection
+  assert.equal(isHtmlContent('From: John Doe <aizenbunshin@gmail.com>'), false);
+  assert.equal(isHtmlContent('On Thu, Oct 8 wrote: <someone@example.com>'), false);
+  assert.equal(isHtmlContent('Hello <world>'), false);
+
+  // Real HTML tags and doctypes
   assert.equal(isHtmlContent('<div class="email">Content</div>'), true);
   assert.equal(isHtmlContent('<p>Paragraph</p>'), true);
   assert.equal(isHtmlContent('<img src="x" onerror="alert(1)">'), true);
+  assert.equal(isHtmlContent('<!DOCTYPE html><html><body>Test</body></html>'), true);
+  assert.equal(isHtmlContent('<a href="https://example.com">Visit site</a>'), true);
+  assert.equal(isHtmlContent('Line 1<br>Line 2'), true);
 });
 
 // Test 6: Credentials authentication verification logic (username + passcode)
@@ -221,7 +227,7 @@ test('telegram formatter: escapes html entities and highlights otp code', () => 
   };
 
   const text = formatTelegramMessage(msgWithOtp);
-  assert.match(text, /🔑 <b>Kode OTP:<\/b> <code>894211<\/code>/);
+  assert.match(text, /🔑 <b>OTP Code:<\/b> <code>894211<\/code>/);
   assert.match(text, /&lt;important&gt;/); // escaped html
   assert.match(text, /service@secure\.com/);
   assert.match(text, /myuser@rinjaniglobal\.com/);
@@ -402,6 +408,70 @@ test('telegram forum topic: builds payload with message_thread_id when topic ID 
 
   const payloadNan = buildTelegramPayload('-1001234567890', 'Alert', 'abc');
   assert.equal(payloadNan.message_thread_id, undefined);
+});
+
+// Test 15: Email thread parsing (separating main content from nested replies)
+test('email thread parser: cleanly isolates main message and nested reply depths', () => {
+  const replyBody =
+    'coba lagi\n\n' +
+    'On Thu, Oct 8, 2026 at 4:27 PM Bunshin Aizen <aizenbunshin@gmail.com> wrote:\n\n' +
+    '> haiiii\n>\n' +
+    '> On Thu, Oct 8, 2026 at 4:22 PM Bunshin Aizen <aizenbunshin@gmail.com> wrote:\n>\n' +
+    '>> halo test from aizen\n>>';
+
+  const thread = parseEmailThread(replyBody);
+  assert.equal(thread.mainText, 'coba lagi');
+  assert.equal(thread.hasQuotes, true);
+  assert.match(thread.attribution || '', /On Thu, Oct 8/);
+  assert.equal(thread.quoteItems.length >= 2, true);
+
+  // Check depth levels
+  const depth1Items = thread.quoteItems.filter((i) => i.depth === 1);
+  const depth2Items = thread.quoteItems.filter((i) => i.depth === 2);
+  assert.equal(depth1Items.length > 0, true);
+  assert.equal(depth2Items.length > 0, true);
+
+  // Single message without quotes
+  const simpleMsg = 'Halo ini adalah pesan langsung tanpa kutipan.';
+  const simpleThread = parseEmailThread(simpleMsg);
+  assert.equal(simpleThread.mainText, simpleMsg);
+  assert.equal(simpleThread.hasQuotes, false);
+  assert.equal(simpleThread.quoteItems.length, 0);
+});
+
+// Test 16: Safe plain-text URL linkification
+test('linkify text: converts URLs to safe links while escaping HTML characters', () => {
+  const input = 'Silakan verifikasi akun di https://example.com/verify?token=abc&ref=123 <admin@domain.com>';
+  const linked = linkifyText(input);
+
+  // URL converted to safe link with blank target and rel noopener
+  assert.match(linked, /<a href="https:\/\/example\.com\/verify\?token=abc&amp;ref=123" target="_blank"/);
+  // Email angle brackets safely escaped
+  assert.match(linked, /&lt;admin@domain\.com&gt;/);
+  // No unescaped angle brackets in text
+  assert.equal(linked.includes('<admin@domain.com>'), false);
+});
+
+// Test 17: HTML email preparation and iframe security
+test('prepare email html: injects base target and styles while stripping dangerous script tags', () => {
+  const dirtyHtml =
+    '<html><head><title>Test</title></head><body>' +
+    '<script>alert("hack")</script>' +
+    '<p onclick="malicious()">Selamat datang di platform!</p>' +
+    '<div class="gmail_quote">Kutipan email</div>' +
+    '</body></html>';
+
+  const prepared = prepareEmailHtml(dirtyHtml);
+
+  // Scripts must be completely stripped
+  assert.equal(prepared.includes('<script>'), false);
+  assert.equal(prepared.includes('alert("hack")'), false);
+  // Dangerous inline handler stripped
+  assert.equal(prepared.includes('onclick='), false);
+  // Base target _blank injected
+  assert.match(prepared, /<base target="_blank">/);
+  // Nested quotes styling injected
+  assert.match(prepared, /\.gmail_quote/);
 });
 
 
