@@ -20,9 +20,12 @@
       <!-- Hero Active Email Card -->
       <section class="hero-card" id="heroCard">
         <div class="hero-top">
-          <div class="hero-badge">
-            <span class="live-dot"></span>
-            <span id="liveStatusText">Live Polling</span>
+          <div class="hero-top-left">
+            <div class="hero-badge">
+              <span class="live-dot"></span>
+              <span id="liveStatusText">Live Polling</span>
+            </div>
+            <button id="lockBtn" class="lock-btn hidden" title="Kunci sesi / Logout">🔒 Lock</button>
           </div>
           <div class="inbox-switch-wrapper">
             <label for="inboxSelect">Switch Inbox:</label>
@@ -81,6 +84,20 @@
           Developer by <span>MHendriF</span>
         </a>
       </footer>
+    </div>
+
+    <!-- Passcode Auth Modal Overlay -->
+    <div id="authModal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-icon">🔒</div>
+        <h2>GhostBox Protected</h2>
+        <p>Masukkan master passcode untuk mengakses inbox sekali pakai Anda.</p>
+        <form id="authForm">
+          <input type="password" id="passcodeInput" placeholder="Master Passcode" autocomplete="current-password" required />
+          <button type="submit" id="unlockBtn" class="btn btn-primary">🔓 Unlock Access</button>
+        </form>
+        <div id="authError" class="modal-error hidden">Passcode salah, silakan coba lagi.</div>
+      </div>
     </div>
 
     <div class="toast-container" id="toastContainer"></div>

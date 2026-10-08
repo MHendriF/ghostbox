@@ -135,3 +135,29 @@ test('html content detection: routes HTML bodies to sandboxed iframe', () => {
   assert.equal(isHtmlContent('<p>Paragraph</p>'), true);
   assert.equal(isHtmlContent('<img src="x" onerror="alert(1)">'), true);
 });
+
+// Test 6: Passcode authentication verification logic
+function verifyPasscode(expected, provided) {
+  const normExpected = (expected || '').trim();
+  if (!normExpected) {
+    return { allowed: true, authRequired: false };
+  }
+  const normProvided = (provided || '').trim();
+  if (normProvided && normProvided === normExpected) {
+    return { allowed: true, authRequired: true };
+  }
+  return { allowed: false, authRequired: true, error: 'Unauthorized' };
+}
+
+test('passcode verification: validates secret tokens and allows public mode when unset', () => {
+  // Public mode: no passcode configured
+  assert.deepEqual(verifyPasscode('', ''), { allowed: true, authRequired: false });
+  assert.deepEqual(verifyPasscode(undefined, 'any'), { allowed: true, authRequired: false });
+
+  // Protected mode: passcode configured
+  const secret = 'GhostAdmin2026!';
+  assert.equal(verifyPasscode(secret, 'GhostAdmin2026!').allowed, true);
+  assert.equal(verifyPasscode(secret, 'wrong-password').allowed, false);
+  assert.equal(verifyPasscode(secret, '').allowed, false);
+  assert.equal(verifyPasscode(secret, undefined).allowed, false);
+});

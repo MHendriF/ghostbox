@@ -344,11 +344,17 @@ Buka `http://localhost:8787` di peramban Anda.
 
 ### Langkah 9: Deployment ke Cloudflare
 
-Deploy Worker dan seluruh aset web frontend ke edge Cloudflare:
+Deploy Worker dan seluruh aset web frontend ke edge Cloudflare menggunakan perintah:
 
 ```bash
+# Perintah deployment utama:
+npx wrangler deploy
+
+# Atau menggunakan shortcut npm:
 npm run deploy
 ```
+
+> **Penting**: Pastikan Anda telah menjalankan `npx wrangler deploy` minimal satu kali sebelum mengonfigurasi **Email Routing** di Dashboard Cloudflare. Dashboard Cloudflare hanya dapat menampilkan Worker pada menu *"Send to a Worker"* jika Worker tersebut sudah pernah di-deploy ke edge network Cloudflare.
 
 Wrangler akan mengunggah:
 1. Logika Worker API & Ingestion Email.
@@ -424,10 +430,11 @@ ghostbox/
 
 | Perintah | Deskripsi |
 |---|---|
+| `npx wrangler deploy` | Mempublikasikan Worker, aset web statis, dan cron triggers ke Cloudflare edge |
+| `npm run deploy` | Shortcut untuk `wrangler deploy` |
 | `npm run dev` | Menjalankan Worker dan antarmuka web secara lokal |
 | `npm test` | Menjalankan automated test suite verifikasi keamanan |
 | `npm run typecheck` | Memvalidasi tipe TypeScript backend dan frontend sekaligus |
-| `npm run deploy` | Melakukan deployment production ke Cloudflare Workers |
 | `npm run db:migrate` | Menerapkan skema SQL ke database D1 remote di Cloudflare |
 | `npm run db:local` | Menerapkan skema SQL ke database D1 lokal untuk pengujian |
 | `npx wrangler tail` | Menampilkan live streaming log Worker secara real-time |

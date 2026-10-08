@@ -8,6 +8,13 @@ const newBox = document.getElementById('newBox');
 const cancelNewBtn = document.getElementById('cancelNewBtn');
 const createCustomBtn = document.getElementById('createCustomBtn');
 const quickRandomBtn = document.getElementById('quickRandomBtn');
+const lockBtn = document.getElementById('lockBtn');
+const authModal = document.getElementById('authModal');
+/** @type {HTMLFormElement} */
+const authForm = /** @type {*} */ (document.getElementById('authForm'));
+/** @type {HTMLInputElement} */
+const passcodeInput = /** @type {*} */ (document.getElementById('passcodeInput'));
+const authError = document.getElementById('authError');
 /** @type {HTMLInputElement} */
 const localPartInput = /** @type {*} */ (document.getElementById('localPartInput'));
 /** @type {HTMLSelectElement} */
@@ -23,14 +30,40 @@ let appConfig = {
   appName: 'GhostBox',
   mailDomain: 'example.com',
   webHost: 'ghostbox.example.com',
+  authRequired: false,
 };
 
 const SESSION_KEY = 'ghostbox_session_id';
 let sessionId = localStorage.getItem(SESSION_KEY) || localStorage.getItem('tempik_session_id') || '';
 
+const PASSCODE_KEY = 'ghostbox_auth_passcode';
+let authPasscode = localStorage.getItem(PASSCODE_KEY) || '';
+
 let previousMessageCount = 0;
 let unreadCount = 0;
 let openMessageIds = new Set();
+
+function showAuthModal(errMsg = '') {
+  if (!authModal) return;
+  authModal.classList.remove('hidden');
+  if (authError) {
+    if (errMsg) {
+      authError.textContent = errMsg;
+      authError.classList.remove('hidden');
+    } else {
+      authError.classList.add('hidden');
+    }
+  }
+  if (passcodeInput) {
+    passcodeInput.value = '';
+    passcodeInput.focus();
+  }
+}
+
+function hideAuthModal() {
+  if (authModal) authModal.classList.add('hidden');
+  if (authError) authError.classList.add('hidden');
+}
 
 async function fetchJson(url, options = {}) {
   const headers = {
@@ -41,6 +74,9 @@ async function fetchJson(url, options = {}) {
   if (sessionId) {
     headers['x-session-id'] = sessionId;
   }
+  if (authPasscode) {
+    headers['x-auth-passcode'] = authPasscode;
+  }
 
   const res = await fetch(url, {
     ...options,
@@ -48,6 +84,11 @@ async function fetchJson(url, options = {}) {
   });
 
   if (!res.ok) {
+    if (res.status === 401 && appConfig.authRequired) {
+      localStorage.removeItem(PASSCODE_KEY);
+      authPasscode = '';
+      showAuthModal('Sesi berakhir atau passcode salah. Silakan masukkan kembali.');
+    }
     let errMsg = '';
     try {
       const errObj = await res.json();
@@ -501,6 +542,60 @@ createCustomBtn.addEventListener('click', async () => {
   }
 });
 
+// Passcode Modal Form submission
+if (authForm) {
+  authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const candidate = (passcodeInput ? passcodeInput.value : '').trim();
+    if (!candidate) return;
+
+    try {
+      const res = await fetch('/api/verify-passcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode: candidate }),
+      });
+
+      if (!res.ok) {
+        if (authError) {
+          authError.textContent = 'Passcode salah, silakan coba lagi.';
+          authError.classList.remove('hidden');
+        }
+        return;
+      }
+
+      authPasscode = candidate;
+      localStorage.setItem(PASSCODE_KEY, authPasscode);
+      hideAuthModal();
+      showToast('🔓 Akses terbuka');
+
+      // Boot session and inboxes after successful verification
+      await ensureSession();
+      await loadInboxes();
+      startAutoRefresh();
+    } catch (err) {
+      if (authError) {
+        authError.textContent = `Error: ${err.message}`;
+        authError.classList.remove('hidden');
+      }
+    }
+  });
+}
+
+// Lock Button action
+if (lockBtn) {
+  lockBtn.addEventListener('click', () => {
+    localStorage.removeItem(PASSCODE_KEY);
+    authPasscode = '';
+    if (inboxSelect) inboxSelect.innerHTML = '';
+    if (currentInbox) currentInbox.textContent = 'Akses Terkunci';
+    if (messageCount) messageCount.textContent = '0 messages';
+    if (messageList) messageList.replaceChildren();
+    showAuthModal();
+    showToast('🔒 Sesi telah dikunci');
+  });
+}
+
 // Reset unread badge on window focus/visibility
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
@@ -531,18 +626,33 @@ function startAutoRefresh() {
 
     if (secondsRemaining <= 0) {
       resetCountdown();
-      if (document.visibilityState === 'visible' && inboxSelect.value) {
+      if (document.visibilityState === 'visible' && inboxSelect.value && (!appConfig.authRequired || authPasscode)) {
         loadMessages(true);
       }
     }
   }, 1000);
 }
 
-Promise.all([loadConfig(), ensureSession()])
-  .then(() => loadInboxes())
-  .then(() => startAutoRefresh())
-  .catch((err) => {
+// App Initialization
+async function initApp() {
+  try {
+    await loadConfig();
+    if (appConfig.authRequired) {
+      if (lockBtn) lockBtn.classList.remove('hidden');
+      if (!authPasscode) {
+        showAuthModal();
+        return;
+      }
+    }
+    await ensureSession();
+    await loadInboxes();
+    startAutoRefresh();
+  } catch (err) {
     console.error(err);
+    if (err.message && err.message.includes('401')) {
+      showAuthModal('Silakan masukkan master passcode.');
+      return;
+    }
     messageList.replaceChildren();
     const errState = document.createElement('div');
     errState.className = 'empty-state';
@@ -561,4 +671,7 @@ Promise.all([loadConfig(), ensureSession()])
 
     errState.append(icon, title, sub);
     messageList.append(errState);
-  });
+  }
+}
+
+initApp();

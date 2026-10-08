@@ -21,6 +21,7 @@ export interface ApiEnv {
   APP_NAME: string;
   MAIL_DOMAIN: string;
   WEB_HOST: string;
+  AUTH_PASSCODE?: string;
   MAX_INBOXES_PER_SESSION?: string;
   AUTO_REFRESH_INTERVAL_MS?: string;
   DEFAULT_MESSAGES_LIMIT?: string;
@@ -74,6 +75,25 @@ api.use('*', async (c, next) => {
   );
 });
 
+// ---- Master Passcode Authentication Middleware ----
+const requirePasscodeMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Variables }> = async (
+  c,
+  next
+) => {
+  const expectedPasscode = (c.env.AUTH_PASSCODE || '').trim();
+  if (!expectedPasscode) {
+    // Public mode if AUTH_PASSCODE is not set
+    return next();
+  }
+
+  const providedPasscode = (c.req.header('x-auth-passcode') || '').trim();
+  if (!providedPasscode || providedPasscode !== expectedPasscode) {
+    return c.json({ error: 'Unauthorized: Invalid or missing passcode' }, 401);
+  }
+
+  return next();
+};
+
 // ---- Session Authentication Middleware for protected routes ----
 const requireSessionMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Variables }> = async (
   c,
@@ -87,14 +107,43 @@ const requireSessionMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables:
   return next();
 };
 
+// Protect sensitive endpoints with passcode middleware
+api.use('/session', requirePasscodeMiddleware);
+api.use('/inboxes', requirePasscodeMiddleware);
+api.use('/inboxes/*', requirePasscodeMiddleware);
+
+// Protect inbox routes with session middleware
 api.use('/inboxes', requireSessionMiddleware);
 api.use('/inboxes/*', requireSessionMiddleware);
+
+// ---- POST /api/verify-passcode ----
+api.post('/verify-passcode', async (c) => {
+  const expectedPasscode = (c.env.AUTH_PASSCODE || '').trim();
+  if (!expectedPasscode) {
+    return c.json({ valid: true, authRequired: false });
+  }
+
+  let body: { passcode?: string } = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const providedPasscode = (body.passcode || '').trim();
+  if (providedPasscode === expectedPasscode) {
+    return c.json({ valid: true, authRequired: true });
+  }
+
+  return c.json({ error: 'Passcode salah' }, 401);
+});
 
 // ---- GET /api/config ----
 api.get('/config', (c) => {
   const domains = getDomains(c.env);
   const maxInboxes = parseInt(c.env.MAX_INBOXES_PER_SESSION || '10', 10);
   const refreshIntervalMs = parseInt(c.env.AUTO_REFRESH_INTERVAL_MS || '15000', 10);
+  const authRequired = Boolean((c.env.AUTH_PASSCODE || '').trim());
   return c.json({
     appName: c.env.APP_NAME || 'GhostBox',
     mailDomain: domains[0] || 'example.com',
@@ -102,6 +151,7 @@ api.get('/config', (c) => {
     webHost: c.env.WEB_HOST || 'ghostbox.example.com',
     maxInboxesPerSession: maxInboxes,
     autoRefreshIntervalMs: refreshIntervalMs,
+    authRequired,
   });
 });
 
