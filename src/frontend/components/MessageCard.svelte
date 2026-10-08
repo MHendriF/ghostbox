@@ -91,32 +91,35 @@
     <div class="message-header-info">
       <div class="message-header-top">
         <div class="message-from">{msg.from_address || 'Unknown sender'}</div>
-        <div class="message-time" title={fullTime}>{relativeTime}</div>
       </div>
       <div class="message-subject-row">
         <div class="message-subject">{msg.subject || '(No subject)'}</div>
       </div>
     </div>
 
-    <div class="message-header-actions">
-      <button class="icon-btn download-icon" onclick={handleDownload} title="Download message (.EML)">
-        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-      </button>
-      <button class="icon-btn delete-icon" onclick={handleDelete} title="Delete message">
-        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </svg>
-      </button>
-      <span class="icon-btn expand-chevron">
-        <svg class="ui-icon chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </span>
+    <div class="message-header-right">
+      <div class="message-time" title={fullTime}>{relativeTime}</div>
+
+      <div class="message-header-actions">
+        <button class="icon-btn download-icon" onclick={handleDownload} title="Download message (.EML)">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+        <button class="icon-btn delete-icon" onclick={handleDelete} title="Delete message">
+          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+        <span class="icon-btn expand-chevron">
+          <svg class="ui-icon chevron-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
+      </div>
     </div>
   </div>
 
@@ -264,7 +267,6 @@
   .message-header-top {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
   }
 
@@ -275,13 +277,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .message-time {
-    font-size: 11.5px;
-    color: var(--text-tertiary);
-    white-space: nowrap;
-    flex-shrink: 0;
   }
 
   .message-subject-row {
@@ -297,6 +292,21 @@
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
+  }
+
+  .message-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .message-time {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .message-header-actions {
@@ -557,6 +567,14 @@
   @media (max-width: 640px) {
     .message-card-body {
       padding: 0 12px 16px 12px;
+    }
+
+    .message-header-right {
+      gap: 6px;
+    }
+
+    .message-time {
+      font-size: 11px;
     }
   }
 </style>

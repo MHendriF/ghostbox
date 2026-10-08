@@ -9,7 +9,6 @@
   import NewInboxDrawer from './components/NewInboxDrawer.svelte';
   import MessagesPanel from './components/MessagesPanel.svelte';
   import AuthModal from './components/AuthModal.svelte';
-  import QrModal from './components/QrModal.svelte';
   import Toast from './components/Toast.svelte';
 
   // Core State (Svelte 5 Runes)
@@ -27,7 +26,6 @@
   let messages = $state<Message[]>([]);
   let toasts = $state<ToastItem[]>([]);
   let showNewDrawer = $state<boolean>(false);
-  let showQrModal = $state<boolean>(false);
   let authModalOpen = $state<boolean>(false);
   let countdown = $state<number>(15);
   let isFetchingMessages = $state<boolean>(false);
@@ -231,10 +229,6 @@
         target.isContentEditable);
 
     if (e.key === 'Escape') {
-      if (showQrModal) {
-        showQrModal = false;
-        return;
-      }
       if (showNewDrawer) {
         showNewDrawer = false;
         return;
@@ -268,11 +262,6 @@
         }).catch(() => {
           showToast('Failed to copy email address');
         });
-      }
-    } else if (e.key === 'q' || e.key === 'Q') {
-      if (activeAddress) {
-        e.preventDefault();
-        showQrModal = !showQrModal;
       }
     }
   }
@@ -320,7 +309,6 @@
     onDeleteInbox={handleDeleteInbox}
     onLock={handleLockSession}
     onShowToast={showToast}
-    onShowQr={() => (showQrModal = true)}
   />
 
   <NewInboxDrawer
@@ -345,7 +333,6 @@
     <span class="hint-item"><kbd>r</kbd> refresh</span>
     <span class="hint-item"><kbd>n</kbd> new inbox</span>
     <span class="hint-item"><kbd>c</kbd> copy address</span>
-    <span class="hint-item"><kbd>q</kbd> qr code</span>
     <span class="hint-item"><kbd>esc</kbd> close</span>
   </div>
 
@@ -361,13 +348,6 @@
   usernameRequired={!!config.usernameRequired}
   initialUsername={api.authUsername}
   onSubmit={handleVerifyAuth}
-/>
-
-<QrModal
-  open={showQrModal}
-  address={activeAddress}
-  onClose={() => (showQrModal = false)}
-  onShowToast={showToast}
 />
 
 <Toast {toasts} />

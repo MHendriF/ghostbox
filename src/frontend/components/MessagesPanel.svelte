@@ -22,11 +22,15 @@
 
   let searchQuery = $state('');
   let openMessageIds = $state<string[]>([]);
+  let lastAutoOpenedInbox = $state<string>('');
 
-  // Auto-open first message when messages list changes
+  // Auto-open first message once per inbox load / switch
   $effect(() => {
-    if (messages.length > 0 && openMessageIds.length === 0) {
+    if (activeInboxAddress && activeInboxAddress !== lastAutoOpenedInbox && messages.length > 0) {
+      lastAutoOpenedInbox = activeInboxAddress;
       openMessageIds = [messages[0].id];
+    } else if (!activeInboxAddress) {
+      lastAutoOpenedInbox = '';
     }
   });
 
