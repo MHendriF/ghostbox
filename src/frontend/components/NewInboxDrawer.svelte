@@ -14,15 +14,28 @@
   let submitting = $state(false);
 
   $effect(() => {
-    if (!selectedDomain && mailDomain) {
-      selectedDomain = mailDomain;
+    if (!selectedDomain || (mailDomains.length > 0 && !mailDomains.includes(selectedDomain))) {
+      selectedDomain = mailDomain || (mailDomains.length > 0 ? mailDomains[0] : '');
     }
   });
 
   async function handleCreate() {
     submitting = true;
     try {
-      await onCreate(localPart.trim(), selectedDomain);
+      let raw = localPart.trim();
+      let targetDomain = selectedDomain || mailDomain || (mailDomains.length > 0 ? mailDomains[0] : '');
+
+      if (raw.includes('@')) {
+        const parts = raw.split('@');
+        raw = parts[0].trim();
+        const typedDomain = parts.slice(1).join('@').trim().toLowerCase();
+        if (typedDomain && mailDomains.includes(typedDomain)) {
+          targetDomain = typedDomain;
+          selectedDomain = typedDomain;
+        }
+      }
+
+      await onCreate(raw, targetDomain);
       localPart = '';
     } finally {
       submitting = false;
@@ -36,7 +49,7 @@
       <input
         type="text"
         bind:value={localPart}
-        placeholder={`username or leave empty for random @${selectedDomain || mailDomain}`}
+        placeholder={`username or leave empty for random @${selectedDomain || mailDomain || 'domain'}`}
         autocomplete="off"
         disabled={submitting}
         onkeydown={(e) => e.key === 'Enter' && handleCreate()}

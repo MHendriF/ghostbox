@@ -687,12 +687,24 @@ deleteBtn.addEventListener('click', async () => {
 });
 
 createCustomBtn.addEventListener('click', async () => {
-  const localPart = localPartInput.value.trim();
-  const domain = domainSelect.value;
+  let raw = localPartInput.value.trim();
+  let domain = domainSelect.value || (appConfig && appConfig.mailDomain) || '';
+
+  if (raw.includes('@')) {
+    const parts = raw.split('@');
+    raw = parts[0].trim();
+    const typedDomain = parts.slice(1).join('@').trim().toLowerCase();
+    const domains = (appConfig && appConfig.mailDomains) || (appConfig && appConfig.mailDomain ? [appConfig.mailDomain] : []);
+    if (typedDomain && domains.includes(typedDomain)) {
+      domain = typedDomain;
+      if (domainSelect) domainSelect.value = typedDomain;
+    }
+  }
+
   try {
     const inbox = await fetchJson('/api/inboxes', {
       method: 'POST',
-      body: JSON.stringify({ localPart, domain }),
+      body: JSON.stringify({ localPart: raw, domain }),
     });
     localPartInput.value = '';
     newBox.classList.add('hidden');

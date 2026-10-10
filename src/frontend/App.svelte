@@ -14,8 +14,8 @@
   // Core State (Svelte 5 Runes)
   let config = $state<AppConfig>({
     appName: 'GhostBox',
-    mailDomain: 'rinjaniglobal.com',
-    webHost: 'ghostbox.rinjaniglobal.com',
+    mailDomain: '',
+    webHost: '',
     authRequired: false,
     usernameRequired: false,
     autoRefreshMs: 15000,
@@ -293,7 +293,7 @@
 </script>
 
 <div class="app">
-  <Header appName={config.appName} appSubtitle={`Disposable inbox for ${config.mailDomain}`} />
+  <Header appName={config.appName} appSubtitle={config.mailDomain ? `Disposable inbox for ${config.mailDomain}` : 'Disposable temporary inbox'} />
 
   <HeroCard
     {inboxes}
@@ -313,7 +313,7 @@
 
   <NewInboxDrawer
     open={showNewDrawer}
-    mailDomains={config.mailDomains || [config.mailDomain]}
+    mailDomains={config.mailDomains || (config.mailDomain ? [config.mailDomain] : [])}
     mailDomain={config.mailDomain}
     onCreate={handleCreateCustom}
     onCancel={() => (showNewDrawer = false)}
