@@ -70,6 +70,18 @@ export async function getInboxOwner(db: D1Database, address: string): Promise<st
   return null;
 }
 
+export async function getAllInboxes(db: D1Database, limit = 100): Promise<Inbox[]> {
+  return db
+    .prepare(
+      `SELECT * FROM inboxes
+       ORDER BY created_at DESC
+       LIMIT ?`
+    )
+    .bind(limit)
+    .all<Inbox>()
+    .then((r) => r.results);
+}
+
 export async function getSessionInboxes(db: D1Database, sessionId: string): Promise<Inbox[]> {
   return db
     .prepare(
@@ -85,10 +97,12 @@ export async function getSessionInboxes(db: D1Database, sessionId: string): Prom
 
 export async function deleteInbox(
   db: D1Database,
-  sessionId: string,
-  address: string
+  address: string,
+  sessionId?: string
 ): Promise<void> {
-  await unlinkInboxFromSession(db, sessionId, address);
+  if (sessionId) {
+    await unlinkInboxFromSession(db, sessionId, address).catch(() => {});
+  }
   await db.prepare('DELETE FROM messages WHERE inbox_address = ?').bind(address).run();
   await db.prepare('DELETE FROM inboxes WHERE address = ?').bind(address).run();
 }

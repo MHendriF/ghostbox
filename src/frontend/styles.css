@@ -129,7 +129,7 @@ header p {
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
   position: relative;
-  overflow: hidden;
+  z-index: 20;
 }
 
 .hero-card::before {
@@ -141,6 +141,7 @@ header p {
   height: 2px;
   background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
   opacity: 0.8;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .hero-top {

@@ -5,14 +5,11 @@ import {
   getInbox,
   createInbox,
   inboxExists,
-  getInboxOwner,
-  getSessionInboxes,
+  getAllInboxes,
   getMessages,
   deleteMessage,
   deleteInbox,
   ensureSession,
-  linkInboxToSession,
-  isInboxInSession,
 } from '../db/queries';
 import { generateUniqueAddress } from '../utils/random-address';
 
@@ -126,18 +123,12 @@ const requireAuthMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Va
   return next();
 };
 
-// ---- Session Authentication Middleware for protected routes ----
-const requireSessionMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Variables }> = async (
+// ---- Optional Session Middleware for backwards compatibility ----
+const optionalSessionMiddleware: MiddlewareHandler<{ Bindings: ApiEnv; Variables: Variables }> = async (
   c,
   next
 ) => {
-  const sid = extractSessionId(c);
-  if (!sid) {
-    return c.json({ error: 'Missing x-session-id' }, 400);
-  }
-  if (!isValidUuid(sid)) {
-    return c.json({ error: 'Invalid x-session-id format: Must be UUID v4' }, 400);
-  }
+  const sid = extractSessionId(c) || 'global';
   c.set('sessionId', sid);
   return next();
 };
@@ -147,9 +138,9 @@ api.use('/session', requireAuthMiddleware);
 api.use('/inboxes', requireAuthMiddleware);
 api.use('/inboxes/*', requireAuthMiddleware);
 
-// Protect inbox routes with session middleware
-api.use('/inboxes', requireSessionMiddleware);
-api.use('/inboxes/*', requireSessionMiddleware);
+// Optional session tracking (non-blocking)
+api.use('/inboxes', optionalSessionMiddleware);
+api.use('/inboxes/*', optionalSessionMiddleware);
 
 // ---- POST /api/verify-passcode ----
 api.post('/verify-passcode', async (c) => {
@@ -211,15 +202,12 @@ api.get('/session', async (c) => {
 
 // ---- GET /api/inboxes ----
 api.get('/inboxes', async (c) => {
-  const sid = c.get('sessionId');
-  const inboxes = await getSessionInboxes(c.env.DB, sid);
+  const inboxes = await getAllInboxes(c.env.DB);
   return c.json(inboxes);
 });
 
 // ---- POST /api/inboxes ----
 api.post('/inboxes', async (c) => {
-  const sid = c.get('sessionId');
-
   const body = await c.req.json().catch(() => ({}));
   const domains = getDomains(c.env);
   const requestedDomain: string = (body.domain || '').trim().toLowerCase();
@@ -254,19 +242,10 @@ api.post('/inboxes', async (c) => {
   if (requested) {
     address = `${requested}@${domain}`;
 
-    // Anti-Hijacking: check if address already exists
+    // If inbox already exists, return existing inbox (200 OK)
     if (await inboxExists(c.env.DB, address)) {
-      const alreadyInThisSession = await isInboxInSession(c.env.DB, sid, address);
-      if (alreadyInThisSession) {
-        const existingInbox = await getInbox(c.env.DB, address);
-        return c.json(existingInbox!, 200);
-      }
-
-      // Check ownership
-      const ownerSession = await getInboxOwner(c.env.DB, address);
-      if (ownerSession && ownerSession !== sid) {
-        return c.json({ error: 'Address already registered by another session' }, 409);
-      }
+      const existingInbox = await getInbox(c.env.DB, address);
+      return c.json(existingInbox!, 200);
     }
   } else {
     address = await generateUniqueAddress(
@@ -275,23 +254,9 @@ api.post('/inboxes', async (c) => {
     );
   }
 
-  // Quota enforcement: cap maximum active inboxes per session (configurable via env)
-  const maxInboxes = parseInt(c.env.MAX_INBOXES_PER_SESSION || '10', 10);
-  const currentInboxes = await getSessionInboxes(c.env.DB, sid);
-  if (currentInboxes.length >= maxInboxes) {
-    return c.json(
-      {
-        error: `Session inbox limit reached (maximum ${maxInboxes} inboxes per session). Delete an inbox to create a new one.`,
-      },
-      429
-    );
-  }
-
-  // Ensure inbox record exists with current session as owner
+  // Ensure inbox record exists
+  const sid = c.get('sessionId') || undefined;
   await createInbox(c.env.DB, address, sid);
-
-  // Link to session
-  await linkInboxToSession(c.env.DB, sid, address);
 
   const inbox = await getInbox(c.env.DB, address);
   return c.json(inbox!, 201);
@@ -299,26 +264,16 @@ api.post('/inboxes', async (c) => {
 
 // ---- DELETE /api/inboxes/:address ----
 api.delete('/inboxes/:address', async (c) => {
-  const sid = c.get('sessionId');
   const address = decodeURIComponent(c.req.param('address'));
+  const sid = c.get('sessionId');
 
-  if (!(await isInboxInSession(c.env.DB, sid, address))) {
-    return c.json({ error: 'Inbox not in this session' }, 403);
-  }
-
-  await deleteInbox(c.env.DB, sid, address);
+  await deleteInbox(c.env.DB, address, sid);
   return c.json({ ok: true });
 });
 
 // ---- GET /api/inboxes/:address/messages ----
 api.get('/inboxes/:address/messages', async (c) => {
-  const sid = c.get('sessionId');
   const address = decodeURIComponent(c.req.param('address'));
-
-  // Must have inbox in session to read messages
-  if (!(await isInboxInSession(c.env.DB, sid, address))) {
-    return c.json({ error: 'Inbox not in this session' }, 403);
-  }
 
   const defaultLimit = parseInt(c.env.DEFAULT_MESSAGES_LIMIT || '50', 10);
   const maxLimit = parseInt(c.env.MAX_MESSAGES_LIMIT || '100', 10);
@@ -334,13 +289,8 @@ api.get('/inboxes/:address/messages', async (c) => {
 
 // ---- DELETE /api/inboxes/:address/messages/:id ----
 api.delete('/inboxes/:address/messages/:id', async (c) => {
-  const sid = c.get('sessionId');
   const address = decodeURIComponent(c.req.param('address'));
   const messageId = c.req.param('id');
-
-  if (!(await isInboxInSession(c.env.DB, sid, address))) {
-    return c.json({ error: 'Inbox not in this session' }, 403);
-  }
 
   const deleted = await deleteMessage(c.env.DB, messageId, address);
   if (!deleted) {
