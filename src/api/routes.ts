@@ -12,6 +12,7 @@ import {
   ensureSession,
   deleteEmptyInboxes,
   deleteOrphanMessages,
+  getInboxStats,
 } from '../db/queries';
 import { generateUniqueAddress } from '../utils/random-address';
 
@@ -202,9 +203,17 @@ api.get('/session', async (c) => {
   return c.json({ sessionId: sid });
 });
 
+// ---- GET /api/inboxes/stats ----
+api.get('/inboxes/stats', async (c) => {
+  const stats = await getInboxStats(c.env.DB);
+  return c.json(stats);
+});
+
 // ---- GET /api/inboxes ----
 api.get('/inboxes', async (c) => {
-  const inboxes = await getAllInboxes(c.env.DB);
+  const rawLimit = c.req.query('limit');
+  const limit = rawLimit ? Math.max(1, parseInt(rawLimit, 10) || 100) : 100;
+  const inboxes = await getAllInboxes(c.env.DB, limit);
   return c.json(inboxes);
 });
 

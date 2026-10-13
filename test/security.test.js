@@ -591,6 +591,42 @@ test('empty inboxes cleanup logic: isolates inboxes with 0 messages from active 
   assert.equal(keptInboxes[1].address, 'active2@domain.com');
 });
 
+// Test 23: Inbox stats aggregation and display formatting logic
+test('inbox stats aggregation: accurately calculates total, empty, and message counts', () => {
+  const inboxes = [
+    { address: 'active1@domain.com' },
+    { address: 'empty1@domain.com' },
+    { address: 'active2@domain.com' },
+    { address: 'empty2@domain.com' },
+    { address: 'empty3@domain.com' },
+  ];
+  const messages = [
+    { id: '1', inbox_address: 'active1@domain.com' },
+    { id: '2', inbox_address: 'active1@domain.com' },
+    { id: '3', inbox_address: 'active2@domain.com' },
+  ];
+
+  const totalInboxes = inboxes.length;
+  const activeAddresses = new Set(messages.map((m) => m.inbox_address));
+  const emptyInboxes = inboxes.filter((i) => !activeAddresses.has(i.address)).length;
+  const totalMessages = messages.length;
+
+  assert.equal(totalInboxes, 5);
+  assert.equal(emptyInboxes, 3);
+  assert.equal(totalMessages, 3);
+
+  // Derived display format logic when total exceeds list limit
+  const listLimit = 2;
+  const fetchedInboxes = inboxes.slice(0, listLimit);
+  const displayTotal = totalInboxes;
+  const footerText = displayTotal > fetchedInboxes.length
+    ? `${fetchedInboxes.length} of ${displayTotal} inboxes (showing top ${fetchedInboxes.length})`
+    : `${fetchedInboxes.length} of ${fetchedInboxes.length} inboxes`;
+
+  assert.equal(footerText, '2 of 5 inboxes (showing top 2)');
+});
+
+
 
 
 

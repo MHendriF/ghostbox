@@ -29,6 +29,8 @@
   let authModalOpen = $state<boolean>(false);
   let countdown = $state<number>(15);
   let isFetchingMessages = $state<boolean>(false);
+  let totalInboxesCount = $state<number | null>(null);
+  let emptyInboxesCount = $state<number | null>(null);
 
   let knownMessageIds = $state<Set<string>>(new Set());
   let isInitialLoad = $state<boolean>(true);
@@ -40,6 +42,16 @@
       showToast('Session expired or invalid credentials. Please log in again.');
     },
   });
+
+  async function loadInboxStats() {
+    try {
+      const stats = await api.getInboxStats();
+      totalInboxesCount = stats.totalInboxes;
+      emptyInboxesCount = stats.emptyInboxes;
+    } catch (err) {
+      console.warn('Failed to load inbox stats:', err);
+    }
+  }
 
   function showToast(text: string) {
     const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -79,6 +91,7 @@
 
   async function loadInboxes(preferredAddress?: string) {
     try {
+      loadInboxStats();
       const list = await api.getInboxes();
       inboxes = list;
       if (preferredAddress && list.some((i) => i.address === preferredAddress)) {
@@ -108,6 +121,7 @@
       knownMessageIds = new Set();
       isInitialLoad = true;
       resetCountdown();
+      loadInboxStats();
       if (notify) showToast(`Inbox ready: ${inbox.address}`);
     } catch (err: any) {
       showToast(err.message || 'Failed to create random inbox');
@@ -124,6 +138,7 @@
       isInitialLoad = true;
       showNewDrawer = false;
       resetCountdown();
+      loadInboxStats();
       showToast(`Inbox created: ${inbox.address}`);
     } catch (err: any) {
       showToast(err.message || 'Failed to create custom inbox');
@@ -140,6 +155,7 @@
       await api.deleteInbox(target);
       showToast(`Inbox ${target} deleted`);
       inboxes = inboxes.filter((i) => i.address !== target);
+      loadInboxStats();
       if (inboxes.length > 0) {
         activeAddress = inboxes[0].address;
         isInitialLoad = true;
@@ -312,6 +328,8 @@
   <HeroCard
     {inboxes}
     {activeAddress}
+    {totalInboxesCount}
+    {emptyInboxesCount}
     authRequired={!!config.authRequired}
     onSelectInbox={handleSelectInbox}
     onQuickRandom={() => handleQuickRandom(true)}

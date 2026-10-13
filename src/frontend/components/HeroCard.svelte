@@ -14,6 +14,8 @@
     onLock: () => void;
     onShowToast: (msg: string) => void;
     onCleanEmptyInboxes?: () => void | Promise<void>;
+    totalInboxesCount?: number | null;
+    emptyInboxesCount?: number | null;
   }
 
   let {
@@ -28,6 +30,8 @@
     onLock,
     onShowToast,
     onCleanEmptyInboxes,
+    totalInboxesCount = null,
+    emptyInboxesCount = null,
   }: Props = $props();
 
   let copied = $state(false);
@@ -40,8 +44,16 @@
   let isCleaning = $state(false);
   let confirmTimeout: number | null = null;
 
+  let displayTotal = $derived(
+    totalInboxesCount !== null && totalInboxesCount !== undefined
+      ? totalInboxesCount
+      : inboxes.length
+  );
+
   let emptyCount = $derived(
-    inboxes.filter((inb) => (inb.message_count ?? 0) === 0).length
+    emptyInboxesCount !== null && emptyInboxesCount !== undefined
+      ? emptyInboxesCount
+      : inboxes.filter((inb) => (inb.message_count ?? 0) === 0).length
   );
 
   let filteredInboxes = $derived(
@@ -165,13 +177,13 @@
       <div class="inbox-capsule-control">
         <div
           class="capsule-stat"
-          title="{inboxes.length} active inboxes ({inboxes.length - emptyCount} with messages, {emptyCount} empty)"
+          title="{displayTotal} active inboxes ({Math.max(0, displayTotal - emptyCount)} with messages, {emptyCount} empty)"
         >
           <svg class="ui-icon-xs stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
             <polyline points="22,6 12,13 2,6" />
           </svg>
-          <span class="stat-count">{inboxes.length}</span>
+          <span class="stat-count">{displayTotal}</span>
           <span class="stat-label">Inboxes</span>
         </div>
 
@@ -280,7 +292,11 @@
               </div>
 
               <div class="combobox-meta">
-                <span>{filteredInboxes.length} of {inboxes.length} inboxes</span>
+                {#if displayTotal > inboxes.length}
+                  <span>{filteredInboxes.length} of {displayTotal} inboxes (showing top {inboxes.length})</span>
+                {:else}
+                  <span>{filteredInboxes.length} of {inboxes.length} inboxes</span>
+                {/if}
               </div>
 
               <div class="combobox-list">

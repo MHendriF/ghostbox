@@ -1,4 +1,4 @@
-import type { AppConfig, Inbox, Message } from './types';
+import type { AppConfig, Inbox, InboxStats, Message } from './types';
 
 export const SESSION_KEY = 'ghostbox_session_id';
 export const USERNAME_KEY = 'ghostbox_auth_user';
@@ -98,8 +98,13 @@ export class ApiClient {
     return data.sessionId;
   }
 
-  async getInboxes(): Promise<Inbox[]> {
-    return this.fetchJson<Inbox[]>('/api/inboxes');
+  async getInboxes(limit?: number): Promise<Inbox[]> {
+    const url = limit ? `/api/inboxes?limit=${encodeURIComponent(limit)}` : '/api/inboxes';
+    return this.fetchJson<Inbox[]>(url);
+  }
+
+  async getInboxStats(): Promise<InboxStats> {
+    return this.fetchJson<InboxStats>('/api/inboxes/stats');
   }
 
   async createInbox(localPart?: string, domain?: string): Promise<Inbox> {

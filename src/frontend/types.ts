@@ -4,6 +4,12 @@ export interface Inbox {
   message_count?: number;
 }
 
+export interface InboxStats {
+  totalInboxes: number;
+  emptyInboxes: number;
+  totalMessages: number;
+}
+
 export interface Message {
   id: string;
   message_id?: string | null;

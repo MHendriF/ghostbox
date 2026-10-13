@@ -22,6 +22,12 @@ export interface Session {
   created_at: string;
 }
 
+export interface InboxStats {
+  totalInboxes: number;
+  emptyInboxes: number;
+  totalMessages: number;
+}
+
 // ---- Inboxes ----
 
 export async function getInbox(db: D1Database, address: string): Promise<Inbox | null> {
@@ -96,6 +102,26 @@ export async function getAllInboxes(db: D1Database, limit = 100): Promise<Inbox[
       .all<Inbox>()
       .then((r) => r.results);
   }
+}
+
+export async function getInboxStats(db: D1Database): Promise<InboxStats> {
+  const [inboxesRes, emptyRes, messagesRes] = await Promise.all([
+    db.prepare('SELECT COUNT(*) AS total FROM inboxes').first<{ total: number }>().catch(() => null),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS total FROM inboxes
+         WHERE address NOT IN (SELECT DISTINCT inbox_address FROM messages)`
+      )
+      .first<{ total: number }>()
+      .catch(() => null),
+    db.prepare('SELECT COUNT(*) AS total FROM messages').first<{ total: number }>().catch(() => null),
+  ]);
+
+  return {
+    totalInboxes: inboxesRes?.total ?? 0,
+    emptyInboxes: emptyRes?.total ?? 0,
+    totalMessages: messagesRes?.total ?? 0,
+  };
 }
 
 export async function getSessionInboxes(db: D1Database, sessionId: string): Promise<Inbox[]> {
