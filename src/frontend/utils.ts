@@ -30,6 +30,20 @@ export function formatTimestamp(raw?: string): string {
 }
 
 /**
+ * Checks if a timestamp occurs on today's calendar date.
+ */
+export function isToday(raw?: string): boolean {
+  if (!raw) return false;
+  const d = parseDate(raw);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
+/**
  * Accurately detects true HTML markup in email bodies.
  * Avoids false positives on email addresses like `<user@example.com>` or `<john>`.
  */

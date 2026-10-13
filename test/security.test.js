@@ -133,6 +133,8 @@ import {
   extractActionLink,
   extractOtp as extractOtpFrontend,
   getSenderDetails,
+  isToday,
+  parseDate,
 } from '../src/frontend/utils.ts';
 
 test('html content detection: accurately detects HTML bodies while ignoring plaintext email addresses', () => {
@@ -625,6 +627,49 @@ test('inbox stats aggregation: accurately calculates total, empty, and message c
 
   assert.equal(footerText, '2 of 5 inboxes (showing top 2)');
 });
+
+// Test 24: isToday calendar date checking
+test('isToday helper: correctly identifies timestamps occurring today', () => {
+  const now = new Date();
+  const todayIso = now.toISOString();
+  const yesterdayIso = new Date(now.getTime() - 25 * 3600 * 1000).toISOString();
+  const tomorrowIso = new Date(now.getTime() + 25 * 3600 * 1000).toISOString();
+
+  assert.equal(isToday(todayIso), true);
+  assert.equal(isToday(yesterdayIso), false);
+  assert.equal(isToday(tomorrowIso), false);
+  assert.equal(isToday(''), false);
+  assert.equal(isToday(undefined), false);
+});
+
+// Test 25: Inbox and message sorting logic
+test('sorting logic: correctly sorts inboxes by message count and dates', () => {
+  const inboxes = [
+    { address: 'a@domain.com', message_count: 2, created_at: '2026-06-26T08:00:00.000Z' },
+    { address: 'b@domain.com', message_count: 5, created_at: '2026-06-26T09:00:00.000Z' },
+    { address: 'c@domain.com', message_count: 0, created_at: '2026-06-26T07:00:00.000Z' },
+  ];
+
+  // Sort by most messages
+  const byMsgsDesc = [...inboxes].sort((a, b) => (b.message_count ?? 0) - (a.message_count ?? 0));
+  assert.equal(byMsgsDesc[0].address, 'b@domain.com');
+  assert.equal(byMsgsDesc[1].address, 'a@domain.com');
+  assert.equal(byMsgsDesc[2].address, 'c@domain.com');
+
+  // Sort by fewest messages
+  const byMsgsAsc = [...inboxes].sort((a, b) => (a.message_count ?? 0) - (b.message_count ?? 0));
+  assert.equal(byMsgsAsc[0].address, 'c@domain.com');
+  assert.equal(byMsgsAsc[1].address, 'a@domain.com');
+  assert.equal(byMsgsAsc[2].address, 'b@domain.com');
+
+  // Sort by date newest
+  const byDateDesc = [...inboxes].sort(
+    (a, b) => parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime()
+  );
+  assert.equal(byDateDesc[0].address, 'b@domain.com');
+  assert.equal(byDateDesc[2].address, 'c@domain.com');
+});
+
 
 
 

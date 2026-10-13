@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { Inbox } from '../types';
+  import { parseDate } from '../utils';
 
   interface Props {
     inboxes: Inbox[];
@@ -56,13 +57,40 @@
       : inboxes.filter((inb) => (inb.message_count ?? 0) === 0).length
   );
 
-  let filteredInboxes = $derived(
-    inboxes.filter((inb) => {
-      if (!searchQuery.trim()) return true;
+  let inboxSort = $state<'date-desc' | 'date-asc' | 'msgs-desc' | 'msgs-asc'>('date-desc');
+  let inboxCategory = $state<'all' | 'active' | 'empty'>('all');
+
+  let filteredInboxes = $derived.by(() => {
+    let list = inboxes;
+
+    if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      return inb.address.toLowerCase().includes(q);
-    })
-  );
+      list = list.filter((inb) => inb.address.toLowerCase().includes(q));
+    }
+
+    if (inboxCategory === 'active') {
+      list = list.filter((inb) => (inb.message_count ?? 0) > 0);
+    } else if (inboxCategory === 'empty') {
+      list = list.filter((inb) => (inb.message_count ?? 0) === 0);
+    }
+
+    return [...list].sort((a, b) => {
+      if (inboxSort === 'msgs-desc') {
+        const diff = (b.message_count ?? 0) - (a.message_count ?? 0);
+        if (diff !== 0) return diff;
+        return parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime();
+      }
+      if (inboxSort === 'msgs-asc') {
+        const diff = (a.message_count ?? 0) - (b.message_count ?? 0);
+        if (diff !== 0) return diff;
+        return parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime();
+      }
+      if (inboxSort === 'date-asc') {
+        return parseDate(a.created_at).getTime() - parseDate(b.created_at).getTime();
+      }
+      return parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime();
+    });
+  });
 
   function toggleDropdown() {
     isSelectOpen = !isSelectOpen;
@@ -289,6 +317,44 @@
                     ✕
                   </button>
                 {/if}
+              </div>
+
+              <div class="combobox-tools">
+                <div class="combobox-filter-chips">
+                  <button
+                    type="button"
+                    class="chip-btn"
+                    class:active={inboxCategory === 'all'}
+                    onclick={() => (inboxCategory = 'all')}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    class="chip-btn"
+                    class:active={inboxCategory === 'active'}
+                    onclick={() => (inboxCategory = 'active')}
+                    title="Inboxes with incoming messages"
+                  >
+                    Active ({inboxes.length - emptyCount})
+                  </button>
+                  <button
+                    type="button"
+                    class="chip-btn"
+                    class:active={inboxCategory === 'empty'}
+                    onclick={() => (inboxCategory = 'empty')}
+                    title="Empty inboxes"
+                  >
+                    Empty ({emptyCount})
+                  </button>
+                </div>
+
+                <select class="combobox-sort-select" bind:value={inboxSort} aria-label="Sort inboxes">
+                  <option value="date-desc">Newest date</option>
+                  <option value="date-asc">Oldest date</option>
+                  <option value="msgs-desc">Most messages</option>
+                  <option value="msgs-asc">Fewest messages</option>
+                </select>
               </div>
 
               <div class="combobox-meta">
@@ -820,6 +886,68 @@
     color: var(--text-primary);
     background: rgba(255, 255, 255, 0.15);
     border-color: var(--border-hover);
+  }
+
+  .combobox-tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(20, 20, 28, 0.65);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .combobox-filter-chips {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .chip-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .chip-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+    border-color: var(--border-hover);
+  }
+
+  .chip-btn.active {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--accent);
+    color: #c7d2fe;
+    font-weight: 600;
+  }
+
+  .combobox-sort-select {
+    padding: 3px 6px;
+    font-size: 11px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: inherit;
+    cursor: pointer;
+    outline: none;
+    transition: border-color var(--transition);
+  }
+
+  .combobox-sort-select:hover,
+  .combobox-sort-select:focus {
+    border-color: var(--accent);
+    color: var(--text-primary);
   }
 
   .combobox-meta {

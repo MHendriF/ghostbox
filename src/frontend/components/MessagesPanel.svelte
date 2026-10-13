@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Message } from '../types';
-  import { extractActionLink, extractOtp } from '../utils';
+  import { extractActionLink, extractOtp, isToday, parseDate } from '../utils';
   import MessageCard from './MessageCard.svelte';
 
   interface Props {
@@ -22,10 +22,14 @@
   }: Props = $props();
 
   let searchQuery = $state('');
-  let activeFilter = $state<'all' | 'otp' | 'action'>('all');
+  let activeFilter = $state<'all' | 'today' | 'otp' | 'action'>('all');
+  let sortOrder = $state<'newest' | 'oldest'>('newest');
   let openMessageIds = $state<string[]>([]);
   let lastAutoOpenedInbox = $state<string>('');
 
+  let todayCount = $derived(
+    messages.filter((m) => isToday(m.received_at)).length
+  );
   let otpCount = $derived(
     messages.filter((m) => !!extractOtp(m.subject, m.body)).length
   );
@@ -45,19 +49,28 @@
 
   let filteredMessages = $derived.by(() => {
     let result = messages;
-    if (activeFilter === 'otp') {
+    if (activeFilter === 'today') {
+      result = result.filter((msg) => isToday(msg.received_at));
+    } else if (activeFilter === 'otp') {
       result = result.filter((msg) => !!extractOtp(msg.subject, msg.body));
     } else if (activeFilter === 'action') {
       result = result.filter((msg) => !!extractActionLink(msg.subject, msg.body));
     }
 
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return result;
-    return result.filter((msg) => {
-      const subj = (msg.subject || '').toLowerCase();
-      const from = (msg.from_address || '').toLowerCase();
-      const body = (msg.body || '').toLowerCase();
-      return subj.includes(q) || from.includes(q) || body.includes(q);
+    if (q) {
+      result = result.filter((msg) => {
+        const subj = (msg.subject || '').toLowerCase();
+        const from = (msg.from_address || '').toLowerCase();
+        const body = (msg.body || '').toLowerCase();
+        return subj.includes(q) || from.includes(q) || body.includes(q);
+      });
+    }
+
+    return [...result].sort((a, b) => {
+      const timeA = parseDate(a.received_at).getTime();
+      const timeB = parseDate(b.received_at).getTime();
+      return sortOrder === 'newest' ? timeB - timeA : timeA - timeB;
     });
   });
 
@@ -130,6 +143,22 @@
       <button
         type="button"
         class="filter-tab-btn"
+        class:active={activeFilter === 'today'}
+        onclick={() => (activeFilter = 'today')}
+        title="Messages received today"
+      >
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+        Today
+        {#if todayCount > 0}
+          <span class="filter-count highlight">{todayCount}</span>
+        {/if}
+      </button>
+      <button
+        type="button"
+        class="filter-tab-btn"
         class:active={activeFilter === 'otp'}
         onclick={() => (activeFilter = 'otp')}
       >
@@ -159,6 +188,23 @@
         {#if actionCount > 0}
           <span class="filter-count highlight">{actionCount}</span>
         {/if}
+      </button>
+      <button
+        type="button"
+        class="sort-btn"
+        onclick={() => (sortOrder = sortOrder === 'newest' ? 'oldest' : 'newest')}
+        title={sortOrder === 'newest' ? 'Click to sort oldest first' : 'Click to sort newest first'}
+      >
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          {#if sortOrder === 'newest'}
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          {:else}
+            <line x1="12" y1="19" x2="12" y2="5" />
+            <polyline points="5 12 12 5 19 12" />
+          {/if}
+        </svg>
+        <span>{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
       </button>
     </div>
   </div>
@@ -434,5 +480,55 @@
     max-width: 320px;
     line-height: 1.6;
     margin-bottom: 20px;
+  }
+
+  .sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+    margin-left: auto;
+  }
+
+  .sort-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+  }
+
+  @media (max-width: 640px) {
+    .panel-toolbar {
+      padding: 10px 14px;
+      gap: 10px;
+    }
+
+    .search-wrap {
+      min-width: 100%;
+    }
+
+    .filter-tabs {
+      width: 100%;
+      justify-content: flex-start;
+      gap: 5px;
+    }
+
+    .filter-tab-btn {
+      padding: 5px 9px;
+      font-size: 11.5px;
+    }
+
+    .sort-btn {
+      margin-left: 0;
+      padding: 5px 9px;
+      font-size: 11.5px;
+    }
   }
 </style>
