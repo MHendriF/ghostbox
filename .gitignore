@@ -7,3 +7,5 @@ dist/
 wrangler.toml*
 !wrangler.toml.example
 scratch/
+
+*/emails/*

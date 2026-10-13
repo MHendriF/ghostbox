@@ -1,6 +1,7 @@
 export interface Inbox {
   address: string;
   created_at?: string;
+  message_count?: number;
 }
 
 export interface Message {

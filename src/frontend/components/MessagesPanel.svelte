@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Message } from '../types';
+  import { extractActionLink, extractOtp } from '../utils';
   import MessageCard from './MessageCard.svelte';
 
   interface Props {
@@ -21,8 +22,16 @@
   }: Props = $props();
 
   let searchQuery = $state('');
+  let activeFilter = $state<'all' | 'otp' | 'action'>('all');
   let openMessageIds = $state<string[]>([]);
   let lastAutoOpenedInbox = $state<string>('');
+
+  let otpCount = $derived(
+    messages.filter((m) => !!extractOtp(m.subject, m.body)).length
+  );
+  let actionCount = $derived(
+    messages.filter((m) => !!extractActionLink(m.subject, m.body)).length
+  );
 
   // Auto-open first message once per inbox load / switch
   $effect(() => {
@@ -35,9 +44,16 @@
   });
 
   let filteredMessages = $derived.by(() => {
+    let result = messages;
+    if (activeFilter === 'otp') {
+      result = result.filter((msg) => !!extractOtp(msg.subject, msg.body));
+    } else if (activeFilter === 'action') {
+      result = result.filter((msg) => !!extractActionLink(msg.subject, msg.body));
+    }
+
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return messages;
-    return messages.filter((msg) => {
+    if (!q) return result;
+    return result.filter((msg) => {
       const subj = (msg.subject || '').toLowerCase();
       const from = (msg.from_address || '').toLowerCase();
       const body = (msg.body || '').toLowerCase();
@@ -55,6 +71,7 @@
 
   function resetSearch() {
     searchQuery = '';
+    activeFilter = 'all';
   }
 </script>
 
@@ -63,7 +80,7 @@
     <div class="panel-title-wrap">
       <h2>Incoming Messages</h2>
       <span class="badge">
-        {#if searchQuery}
+        {#if searchQuery || activeFilter !== 'all'}
           {filteredMessages.length} of {messages.length} messages
         {:else}
           {messages.length} messages
@@ -98,6 +115,51 @@
           </svg>
         </button>
       {/if}
+    </div>
+
+    <div class="filter-tabs">
+      <button
+        type="button"
+        class="filter-tab-btn"
+        class:active={activeFilter === 'all'}
+        onclick={() => (activeFilter = 'all')}
+      >
+        All
+        <span class="filter-count">{messages.length}</span>
+      </button>
+      <button
+        type="button"
+        class="filter-tab-btn"
+        class:active={activeFilter === 'otp'}
+        onclick={() => (activeFilter = 'otp')}
+      >
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="15" r="4" />
+          <line x1="10.85" y1="12.15" x2="19" y2="4" />
+          <line x1="18" y1="5" x2="20" y2="7" />
+          <line x1="15" y1="8" x2="17" y2="10" />
+        </svg>
+        OTP / Codes
+        {#if otpCount > 0}
+          <span class="filter-count highlight">{otpCount}</span>
+        {/if}
+      </button>
+      <button
+        type="button"
+        class="filter-tab-btn"
+        class:active={activeFilter === 'action'}
+        onclick={() => (activeFilter = 'action')}
+      >
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+        Actions
+        {#if actionCount > 0}
+          <span class="filter-count highlight">{actionCount}</span>
+        {/if}
+      </button>
     </div>
   </div>
 
@@ -270,6 +332,65 @@
   .clear-search-btn:hover {
     color: var(--text-primary);
     background: var(--bg-hover);
+  }
+
+  .filter-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .filter-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .filter-tab-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-focus);
+  }
+
+  .filter-tab-btn.active {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--accent);
+    color: #ffffff;
+    font-weight: 600;
+  }
+
+  .filter-count {
+    font-size: 10.5px;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-tertiary);
+  }
+
+  .filter-tab-btn.active .filter-count {
+    background: rgba(99, 102, 241, 0.35);
+    color: #c7d2fe;
+  }
+
+  .filter-count.highlight {
+    background: rgba(99, 102, 241, 0.3);
+    color: #a5b4fc;
+    font-weight: 700;
+  }
+
+  .ui-icon-xs {
+    width: 13px;
+    height: 13px;
   }
 
   .message-list {

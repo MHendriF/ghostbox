@@ -115,6 +115,15 @@ export class ApiClient {
     });
   }
 
+  async cleanEmptyInboxes(): Promise<{ ok: boolean; deletedInboxes: number; deletedOrphans: number }> {
+    return this.fetchJson<{ ok: boolean; deletedInboxes: number; deletedOrphans: number }>(
+      '/api/inboxes/clean-empty',
+      {
+        method: 'POST',
+      }
+    );
+  }
+
   async getMessages(address: string): Promise<Message[]> {
     return this.fetchJson<Message[]>(`/api/inboxes/${encodeURIComponent(address)}/messages`);
   }

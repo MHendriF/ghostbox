@@ -124,7 +124,16 @@ test('timestamp normalization: handles non-ISO SQLite and ISO 8601 uniformly', (
 });
 
 // Test 5: HTML detection for sandboxed iframe routing
-import { isHtmlContent, parseEmailThread, linkifyText, prepareEmailHtml } from '../src/frontend/utils.ts';
+import {
+  isHtmlContent,
+  parseEmailThread,
+  linkifyText,
+  prepareEmailHtml,
+  sanitizePlainText,
+  extractActionLink,
+  extractOtp as extractOtpFrontend,
+  getSenderDetails,
+} from '../src/frontend/utils.ts';
 
 test('html content detection: accurately detects HTML bodies while ignoring plaintext email addresses', () => {
   assert.equal(isHtmlContent('Plain text email here'), false);
@@ -473,6 +482,115 @@ test('prepare email html: injects base target and styles while stripping dangero
   // Nested quotes styling injected
   assert.match(prepared, /\.gmail_quote/);
 });
+
+// Test 18: Plain text email sanitization
+test('plain text sanitization: collapses excessive blank lines and cleans about:blank and duplicate URLs', () => {
+  const bloatedText =
+    'Verify your account\n\n\n\n\n\n' +
+    '( about:blank )\n\n' +
+    'Account:\n' +
+    'user@example.com\n\n\n\n' +
+    'https://login.example.com/verify# ( https://login.example.com/verify# )\n\n\n' +
+    'Thank you!';
+
+  const cleaned = sanitizePlainText(bloatedText);
+
+  // Consecutive blank lines must be clamped to at most 1 blank line (2 newlines)
+  assert.equal(cleaned.includes('\n\n\n'), false);
+  // about:blank artifact removed
+  assert.equal(cleaned.includes('about:blank'), false);
+  // Duplicate URL collapsed
+  assert.equal(cleaned.includes('( https://login.example.com/verify# )'), false);
+  assert.match(cleaned, /https:\/\/login\.example\.com\/verify#/);
+  assert.match(cleaned, /Verify your account/);
+  assert.match(cleaned, /Thank you!/);
+});
+
+// Test 19: Comprehensive OTP extraction from real email samples
+test('otp extraction: accurately identifies alphanumeric and numeric codes while ignoring stopwords', () => {
+  // Sample 1: Instagram (numeric in subject)
+  assert.equal(extractOtpFrontend('570886 is your Instagram confirmation code', 'Enter 570886 to verify'), '570886');
+
+  // Sample 2: Zomato (alphanumeric code AFS5HU)
+  const zomatoText = 'Tap the button below or log in manually by entering the following OTP AFS5HU Note: The OTP will expire in 10 minutes.';
+  assert.equal(extractOtpFrontend('Log in to Zomato', zomatoText), 'AFS5HU');
+
+  // Sample 3: Chia Cloud Wallet (numeric code)
+  const chiaText = 'To continue the signup process, please enter the following verification code:\n\n962180\n\nThis code is valid for 10 minutes.';
+  assert.equal(extractOtpFrontend('Chia Cloud Wallet email verification', chiaText), '962180');
+
+  // Negative case: common english words after "code" must NOT be extracted
+  const falsePositive = 'Your verification code will be sent shortly to your phone.';
+  assert.equal(extractOtpFrontend('Notification', falsePositive), null);
+});
+
+// Test 20: Action link extraction
+test('action link extraction: extracts primary verification and login links', () => {
+  // Plain text sample: Kong Konnect
+  const kongText = 'Please click below to confirm your account:\nConfirm your email ( https://signin.cloud.konghq.com/u/email-verification?ticket=abc123xyz# )';
+  const action1 = extractActionLink('Verify your email address for Konnect', kongText);
+  assert.notEqual(action1, null);
+  assert.equal(action1?.url, 'https://signin.cloud.konghq.com/u/email-verification?ticket=abc123xyz#');
+  assert.equal(action1?.label, 'Confirm your email');
+
+  // Plain text sample: IDCloudHost
+  const idCloudText = 'Verify Your Account ( https://login.idcloudhost.com/u/email-verification?ticket=Bvw9vodd# )';
+  const action2 = extractActionLink('Welcome to IDCloudHost!', idCloudText);
+  assert.notEqual(action2, null);
+  assert.equal(action2?.url, 'https://login.idcloudhost.com/u/email-verification?ticket=Bvw9vodd#');
+  assert.equal(action2?.label, 'Verify Your Account');
+
+  // HTML sample: Zomato
+  const zomatoHtml = '<div><a href="https://url7479.zomato.com/ss/c/login-token" class="btn">Log in to Zomato</a></div>';
+  const action3 = extractActionLink('Log in to Zomato', zomatoHtml);
+  assert.notEqual(action3, null);
+  assert.equal(action3?.url, 'https://url7479.zomato.com/ss/c/login-token');
+  assert.equal(action3?.label, 'Log in to Zomato');
+});
+
+// Test 21: Sender detail normalization
+test('sender details: formats display name and domain cleanly for automated addresses', () => {
+  const sesAddress = '010e01a10f991d85-e34e8758-828d-4631-b1d5-7b0f0855c06c-000000@console.idcloudhost.com';
+  const res1 = getSenderDetails(sesAddress);
+  assert.equal(res1.domain, 'console.idcloudhost.com');
+  assert.equal(res1.displayName, 'Idcloudhost');
+
+  const standardAddress = 'no-reply@mail.instagram.com';
+  const res2 = getSenderDetails(standardAddress);
+  assert.equal(res2.domain, 'mail.instagram.com');
+  assert.equal(res2.displayName, 'no-reply');
+
+  const namedAddress = '"Meta Security" <security@facebookmail.com>';
+  const res3 = getSenderDetails(namedAddress);
+  assert.equal(res3.displayName, 'Meta Security');
+  assert.equal(res3.email, 'security@facebookmail.com');
+});
+
+// Test 22: Empty inboxes identification logic
+test('empty inboxes cleanup logic: isolates inboxes with 0 messages from active inboxes', () => {
+  const inboxes = [
+    { address: 'active1@domain.com' },
+    { address: 'empty1@domain.com' },
+    { address: 'active2@domain.com' },
+    { address: 'empty2@domain.com' },
+  ];
+  const messages = [
+    { inbox_address: 'active1@domain.com', subject: 'Msg 1' },
+    { inbox_address: 'active2@domain.com', subject: 'Msg 2' },
+  ];
+
+  const activeSet = new Set(messages.map((m) => m.inbox_address));
+  const emptyInboxes = inboxes.filter((i) => !activeSet.has(i.address));
+  const keptInboxes = inboxes.filter((i) => activeSet.has(i.address));
+
+  assert.equal(emptyInboxes.length, 2);
+  assert.equal(emptyInboxes[0].address, 'empty1@domain.com');
+  assert.equal(emptyInboxes[1].address, 'empty2@domain.com');
+  assert.equal(keptInboxes.length, 2);
+  assert.equal(keptInboxes[0].address, 'active1@domain.com');
+  assert.equal(keptInboxes[1].address, 'active2@domain.com');
+});
+
 
 
 

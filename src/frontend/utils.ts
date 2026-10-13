@@ -173,8 +173,8 @@ export function parseEmailThread(body: string): ParsedEmailThread {
     }
   }
 
-  const mainText = mainLines.join('\n').trim();
-  const rawQuotedText = quoteLines.join('\n').trim();
+  const mainText = sanitizePlainText(mainLines.join('\n'));
+  const rawQuotedText = sanitizePlainText(quoteLines.join('\n'));
 
   // If message only contains quotes, keep it in mainText to avoid rendering a blank box
   if (!mainText && rawQuotedText) {
@@ -201,7 +201,7 @@ export function parseEmailThread(body: string): ParsedEmailThread {
  * - Injects clean typography and responsive styling
  * - Styles nested quote elements (Gmail, Outlook, Apple Mail)
  */
-export function prepareEmailHtml(rawHtml: string): string {
+export function prepareEmailHtml(rawHtml: string, isDarkMode = false): string {
   if (!rawHtml) return '';
 
   // 1. Strip script tags
@@ -210,7 +210,23 @@ export function prepareEmailHtml(rawHtml: string): string {
   // 2. Strip inline javascript event handlers
   cleaned = cleaned.replace(/\s+on[a-z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, '');
 
+  const themeStyles = isDarkMode
+    ? `
+    color: #e6edf3 !important;
+    background-color: #0f141c !important;
+`
+    : `
+    color: #1e293b !important;
+    background-color: #ffffff !important;
+`;
+
+  const linkColor = isDarkMode ? '#60a5fa' : '#2563eb';
+  const quoteBg = isDarkMode ? '#171f2c' : '#f8fafc';
+  const quoteText = isDarkMode ? '#94a3b8' : '#475569';
+  const quoteBorder = isDarkMode ? '#3b82f6' : '#94a3b8';
+
   const injectedStyles = `
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_blank">
 <style>
   html, body {
@@ -219,13 +235,16 @@ export function prepareEmailHtml(rawHtml: string): string {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
     font-size: 14px !important;
     line-height: 1.6 !important;
-    color: #1e293b !important;
-    background-color: #ffffff !important;
+    ${themeStyles}
     overflow-wrap: break-word !important;
     word-break: break-word !important;
+    box-sizing: border-box !important;
+  }
+  *, *:before, *:after {
+    box-sizing: inherit !important;
   }
   a {
-    color: #3b82f6 !important;
+    color: ${linkColor} !important;
     text-decoration: underline !important;
   }
   img {
@@ -236,11 +255,11 @@ export function prepareEmailHtml(rawHtml: string): string {
     max-width: 100% !important;
   }
   .gmail_quote, .gmail_extra, blockquote, #divRplyFwdMsg, [class*="quote"] {
-    border-left: 2px solid #94a3b8 !important;
+    border-left: 2px solid ${quoteBorder} !important;
     padding-left: 12px !important;
     margin: 12px 0 12px 4px !important;
-    color: #475569 !important;
-    background: #f8fafc !important;
+    color: ${quoteText} !important;
+    background: ${quoteBg} !important;
     border-radius: 0 4px 4px 0 !important;
   }
 </style>
@@ -257,27 +276,194 @@ export function prepareEmailHtml(rawHtml: string): string {
   return cleaned;
 }
 
-export function extractOtp(subject = '', body = ''): string | null {
-  const text = `${subject} ${stripHtml(body)}`.replace(/\s+/g, ' ');
+/**
+ * Cleans excessive whitespace, linebreaks, and upstream HTML-to-text conversion artifacts.
+ * Prevents bloated vertical layouts and redundant duplicate URLs.
+ */
+export function sanitizePlainText(text: string): string {
+  if (!text) return '';
 
-  // Match labeled code/otp
-  const labeledRegex = /(?:code|otp|verification|pin|kode|verifikasi|token)[\s:=#\-]+([a-z0-9]{4,8})\b/i;
-  const matchLabeled = text.match(labeledRegex);
-  if (matchLabeled && matchLabeled[1]) {
-    return matchLabeled[1];
+  let cleaned = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // 1. Remove useless about:blank link artifacts
+  cleaned = cleaned.replace(/\(?\s*about:blank\s*\)?/gi, '');
+
+  // 2. Collapse duplicate URL parentheticals: e.g. "https://foo ( https://foo )" -> "https://foo"
+  cleaned = cleaned.replace(
+    /(https?:\/\/[^\s<>"')]+)\s*\(\s*\1\s*\)/gi,
+    '$1'
+  );
+
+  // 3. Clean line by line: trim trailing spaces and collapse excessive indentation
+  const lines = cleaned.split('\n');
+  const processedLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      processedLines.push('');
+    } else {
+      // If a line is excessively indented (> 8 spaces) without markdown list or code markers, normalize indentation
+      const matchIndent = line.match(/^(\s+)/);
+      if (matchIndent && matchIndent[1].length > 6 && !/^[\s]*[-*+0-9>]/.test(line)) {
+        processedLines.push('  ' + trimmed);
+      } else {
+        processedLines.push(line.trimEnd());
+      }
+    }
   }
 
-  // Match standalone 6-8 digit numeric code
+  // 4. Collapse 3+ consecutive newlines to at most 2 newlines (1 empty line gap)
+  cleaned = processedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+  return cleaned;
+}
+
+export interface ActionLink {
+  url: string;
+  label: string;
+}
+
+/**
+ * Accurately detects primary action buttons and verification links in emails.
+ */
+export function extractActionLink(subject = '', body = ''): ActionLink | null {
+  if (!body) return null;
+
+  // 1. Try HTML <a> tags first if HTML content
+  if (isHtmlContent(body)) {
+    const anchorRegex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = anchorRegex.exec(body)) !== null) {
+      const href = (match[1] || '').trim();
+      const rawLabel = stripHtml(match[2] || '').trim().replace(/\s+/g, ' ');
+
+      if (!href.startsWith('http://') && !href.startsWith('https://')) continue;
+
+      // Filter out social, trackers, unsubscribes
+      if (/(?:facebook|twitter|x\.com|instagram|linkedin|youtube|discord|github|unsubscribe|optout|privacy|terms|help)/i.test(href)) {
+        continue;
+      }
+
+      // Check if label or url indicates a primary action
+      const actionKeywordRegex = /(?:verify|confirm|activate|log\s*in|sign\s*in|masuk|verifikasi|konfirmasi|validasi|get\s*started)/i;
+      const isActionLabel = actionKeywordRegex.test(rawLabel);
+      const isActionUrl = /(?:verification|confirm|verify|ticket=|token=|magic|activate|auth)/i.test(href);
+
+      if (isActionLabel || isActionUrl) {
+        let label = rawLabel;
+        if (!label || label.length < 3 || label.length > 40 || /^https?:/i.test(label)) {
+          label = isActionLabel ? rawLabel.slice(0, 32) : 'Open Verification Link';
+        }
+        return { url: href, label };
+      }
+    }
+  }
+
+  // 2. Try Plain Text link patterns
+  // Pattern A: "Action Label ( https://... )"
+  const plainActionRegex = /(?:verify|confirm|activate|log\s*in|sign\s*in|masuk|verifikasi|konfirmasi)[^\n\r(:]*\(\s*(https?:\/\/[^\s)]+)\s*\)/i;
+  const matchPlain = body.match(plainActionRegex);
+  if (matchPlain && matchPlain[1]) {
+    const url = matchPlain[1].trim();
+    const fullMatched = matchPlain[0];
+    const rawLabel = fullMatched.replace(/\s*\(\s*https?:\/\/[^\s)]+\s*\)/, '').trim();
+    const label = rawLabel.length >= 3 && rawLabel.length <= 40 ? rawLabel : 'Open Verification Link';
+    return { url, label };
+  }
+
+  // Pattern B: Explicit "Verify Link: https://..." or URL with verification token in query
+  const tokenUrlRegex = /(https?:\/\/[^\s<>"']*(?:verification|confirm|ticket=|token=)[^\s<>"']*)/i;
+  const matchToken = body.match(tokenUrlRegex);
+  if (matchToken && matchToken[1]) {
+    const cleanUrl = matchToken[1].replace(/[.,;:!?)\]]+$/, '');
+    return { url: cleanUrl, label: 'Open Verification Link' };
+  }
+
+  return null;
+}
+
+export interface SenderDetails {
+  displayName: string;
+  email: string;
+  domain: string;
+}
+
+export function getSenderDetails(from_address = ''): SenderDetails {
+  const raw = (from_address || '').trim();
+  let displayName = '';
+  let email = raw;
+
+  // Format: "Name" <email@domain.com>
+  const angleMatch = raw.match(/^"?([^"<]+)"?\s*<([^>]+)>/);
+  if (angleMatch) {
+    displayName = angleMatch[1].trim();
+    email = angleMatch[2].trim();
+  }
+
+  const atIdx = email.indexOf('@');
+  const user = atIdx !== -1 ? email.slice(0, atIdx) : email;
+  const domain = atIdx !== -1 ? email.slice(atIdx + 1).toLowerCase() : '';
+
+  if (!displayName) {
+    // If username is an automated hash / AWS SES bounce string (> 18 chars with digits/hyphens)
+    if (user.length > 18 && /^[0-9a-f\-+]+$/i.test(user)) {
+      const parts = domain.split('.');
+      if (parts.length >= 2) {
+        const root = parts[parts.length - 2];
+        displayName = root.charAt(0).toUpperCase() + root.slice(1);
+      } else {
+        displayName = domain;
+      }
+    } else if (user) {
+      displayName = user;
+    } else {
+      displayName = 'Unknown sender';
+    }
+  }
+
+  return { displayName, email, domain };
+}
+
+export function extractOtp(subject = '', body = ''): string | null {
+  // Check subject first for explicit code
+  const subjectText = (subject || '').trim();
+  const subCodeMatch = subjectText.match(/\b(\d{4,8})\b/);
+  if (subCodeMatch && /(?:code|otp|pin|kode|verifikasi|verification|confirmation)/i.test(subjectText)) {
+    return subCodeMatch[1];
+  }
+
+  const rawClean = `${subject} ${stripHtml(body)}`.replace(/\s+/g, ' ');
+
+  // 1. Match labeled code/otp/token/pin/password (alphanumeric 4-8 chars)
+  const labeledRegex = /(?:code|otp|verification|pin|kode|verifikasi|token|password|sandi)[\s:=#\-]+([a-z0-9]{4,8})\b/i;
+  const matchLabeled = rawClean.match(labeledRegex);
+  if (matchLabeled && matchLabeled[1]) {
+    const candidate = matchLabeled[1].trim();
+    const isPureAlpha = /^[a-zA-Z]+$/.test(candidate);
+    const commonWords = new Set([
+      'will', 'your', 'with', 'from', 'this', 'that', 'into', 'have',
+      'only', 'once', 'must', 'does', 'just', 'more', 'than', 'also',
+      'over', 'sent', 'been', 'here', 'when', 'then'
+    ]);
+    if (!isPureAlpha || !commonWords.has(candidate.toLowerCase())) {
+      if (/\d/.test(candidate) || candidate === candidate.toUpperCase()) {
+        return candidate;
+      }
+    }
+  }
+
+  // 2. Match standalone 6-8 digit numeric code
   const standalone6to8 = /\b(\d{6,8})\b/;
-  const match6to8 = text.match(standalone6to8);
+  const match6to8 = rawClean.match(standalone6to8);
   if (match6to8 && match6to8[1]) {
     return match6to8[1];
   }
 
-  // Match standalone 4-5 digit numeric code (filtering out common years 1970-2099)
+  // 3. Match standalone 4-5 digit numeric code (filtering out common years 1970-2099)
   const standalone4to5 = /\b(\d{4,5})\b/g;
-  let match4to5;
-  while ((match4to5 = standalone4to5.exec(text)) !== null) {
+  let match4to5: RegExpExecArray | null;
+  while ((match4to5 = standalone4to5.exec(rawClean)) !== null) {
     const val = parseInt(match4to5[1], 10);
     if (val >= 1970 && val <= 2099) {
       continue;

@@ -153,6 +153,20 @@
     }
   }
 
+  async function handleCleanEmptyInboxes() {
+    try {
+      const res = await api.cleanEmptyInboxes();
+      if (res.deletedInboxes === 0) {
+        showToast('Tidak ada inbox kosong yang perlu dibersihkan');
+      } else {
+        showToast(`Berhasil membersihkan ${res.deletedInboxes} inbox kosong`);
+        await loadInboxes();
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Gagal membersihkan inbox kosong');
+    }
+  }
+
   async function handleDeleteSingleMessage(messageId: string) {
     if (!activeAddress) return;
     try {
@@ -309,6 +323,7 @@
     onDeleteInbox={handleDeleteInbox}
     onLock={handleLockSession}
     onShowToast={showToast}
+    onCleanEmptyInboxes={handleCleanEmptyInboxes}
   />
 
   <NewInboxDrawer

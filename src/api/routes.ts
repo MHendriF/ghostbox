@@ -10,6 +10,8 @@ import {
   deleteMessage,
   deleteInbox,
   ensureSession,
+  deleteEmptyInboxes,
+  deleteOrphanMessages,
 } from '../db/queries';
 import { generateUniqueAddress } from '../utils/random-address';
 
@@ -260,6 +262,17 @@ api.post('/inboxes', async (c) => {
 
   const inbox = await getInbox(c.env.DB, address);
   return c.json(inbox!, 201);
+});
+
+// ---- POST /api/inboxes/clean-empty ----
+api.post('/inboxes/clean-empty', async (c) => {
+  const deletedInboxes = await deleteEmptyInboxes(c.env.DB);
+  const deletedOrphans = await deleteOrphanMessages(c.env.DB);
+  return c.json({
+    ok: true,
+    deletedInboxes,
+    deletedOrphans,
+  });
 });
 
 // ---- DELETE /api/inboxes/:address ----

@@ -1,9 +1,12 @@
 <script lang="ts">
   import type { Message } from '../types';
   import {
+    extractActionLink,
+    extractOtp,
     formatRelativeTime,
     formatTimestamp,
     getAvatarStyle,
+    getSenderDetails,
     isHtmlContent,
     linkifyText,
     parseEmailThread,
@@ -22,16 +25,26 @@
   let { msg, isOpen, onToggle, onDelete, onDownloadEml, onShowToast }: Props = $props();
 
   let bodyCopied = $state(false);
+  let otpCopied = $state(false);
   let showQuotes = $state(false);
   let viewMode = $state<'rendered' | 'raw'>('rendered');
+  let htmlTheme = $state<'light' | 'dark'>('light');
   let iframeHeight = $state('320px');
 
-  let initial = $derived((msg.from_address || '?').trim().charAt(0).toUpperCase());
+  let detectedOtp = $derived(extractOtp(msg.subject, msg.body));
+  let actionLink = $derived(extractActionLink(msg.subject, msg.body));
+  let senderDetails = $derived(getSenderDetails(msg.from_address));
+
+  let initial = $derived(
+    (senderDetails.displayName || msg.from_address || '?').trim().charAt(0).toUpperCase()
+  );
   let avatarStyle = $derived(getAvatarStyle(msg.from_address));
   let relativeTime = $derived(formatRelativeTime(msg.received_at));
   let fullTime = $derived(formatTimestamp(msg.received_at));
   let hasHtml = $derived(isHtmlContent(msg.body || ''));
-  let preparedHtml = $derived(hasHtml ? prepareEmailHtml(msg.body || '') : '');
+  let preparedHtml = $derived(
+    hasHtml ? prepareEmailHtml(msg.body || '', htmlTheme === 'dark') : ''
+  );
   let thread = $derived(!hasHtml ? parseEmailThread(msg.body || '') : null);
   let mainTextHtml = $derived(thread ? linkifyText(thread.mainText) : '');
 
@@ -47,6 +60,21 @@
       }, 1800);
     } catch {
       onShowToast('Failed to copy message content');
+    }
+  }
+
+  async function handleCopyOtp(e: MouseEvent) {
+    e.stopPropagation();
+    if (!detectedOtp) return;
+    try {
+      await navigator.clipboard.writeText(detectedOtp);
+      otpCopied = true;
+      onShowToast(`Verification code copied: ${detectedOtp}`);
+      setTimeout(() => {
+        otpCopied = false;
+      }, 2000);
+    } catch {
+      onShowToast('Failed to copy verification code');
     }
   }
 
@@ -90,10 +118,39 @@
 
     <div class="message-header-info">
       <div class="message-header-top">
-        <div class="message-from">{msg.from_address || 'Unknown sender'}</div>
+        <span class="message-from" title={msg.from_address || 'Unknown sender'}>
+          {senderDetails.displayName}
+        </span>
+        {#if senderDetails.domain}
+          <span class="sender-domain-badge">@{senderDetails.domain}</span>
+        {/if}
       </div>
       <div class="message-subject-row">
-        <div class="message-subject">{msg.subject || '(No subject)'}</div>
+        <span class="message-subject">{msg.subject || '(No subject)'}</span>
+        {#if detectedOtp}
+          <button
+            type="button"
+            class="otp-pill"
+            class:copied={otpCopied}
+            onclick={handleCopyOtp}
+            title="Click to copy verification code"
+          >
+            {#if otpCopied}
+              <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span>{detectedOtp}</span>
+            {:else}
+              <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="15" r="4" />
+                <line x1="10.85" y1="12.15" x2="19" y2="4" />
+                <line x1="18" y1="5" x2="20" y2="7" />
+                <line x1="15" y1="8" x2="17" y2="10" />
+              </svg>
+              <span>OTP: {detectedOtp}</span>
+            {/if}
+          </button>
+        {/if}
       </div>
     </div>
 
@@ -125,6 +182,35 @@
 
   {#if isOpen}
     <div class="message-card-body">
+      {#if actionLink}
+        <div class="quick-action-banner">
+          <div class="action-meta">
+            <div class="action-icon-badge">
+              <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </div>
+            <div class="action-info">
+              <span class="action-title">Action Detected</span>
+              <span class="action-desc">Confirmation or login link ready to open</span>
+            </div>
+          </div>
+          <a
+            href={actionLink.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="action-cta-btn"
+          >
+            <span>{actionLink.label}</span>
+            <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </a>
+        </div>
+      {/if}
+
       {#if msg.body}
         <div class="message-body-toolbar">
           <div class="toolbar-left">
@@ -139,6 +225,16 @@
               >
                 {viewMode === 'rendered' ? 'View Raw' : 'View Rendered'}
               </button>
+              {#if viewMode === 'rendered'}
+                <button
+                  class="toolbar-toggle-btn theme-switch"
+                  onclick={() => (htmlTheme = htmlTheme === 'light' ? 'dark' : 'light')}
+                  title="Toggle Light or Dark email preview canvas"
+                >
+                  <span class="theme-dot" class:is-dark={htmlTheme === 'dark'}></span>
+                  <span>{htmlTheme === 'light' ? 'Light Theme' : 'Dark Theme'}</span>
+                </button>
+              {/if}
             {/if}
           </div>
 
@@ -156,14 +252,16 @@
         {#if viewMode === 'raw'}
           <div class="message-raw-box">{msg.body}</div>
         {:else if hasHtml}
-          <iframe
-            class="message-iframe"
-            sandbox="allow-same-origin allow-popups"
-            srcdoc={preparedHtml}
-            onload={handleIframeLoad}
-            style="height: {iframeHeight};"
-            title="Email content preview"
-          ></iframe>
+          <div class="iframe-canvas-wrap" class:dark-canvas={htmlTheme === 'dark'}>
+            <iframe
+              class="message-iframe"
+              sandbox="allow-same-origin allow-popups"
+              srcdoc={preparedHtml}
+              onload={handleIframeLoad}
+              style="height: {iframeHeight};"
+              title="Email content preview"
+            ></iframe>
+          </div>
         {:else}
           <div class="message-text-content">
             {#if mainTextHtml}
@@ -279,6 +377,17 @@
     text-overflow: ellipsis;
   }
 
+  .sender-domain-badge {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
   .message-subject-row {
     display: flex;
     align-items: center;
@@ -292,6 +401,38 @@
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
+  }
+
+  /* OTP Pill in Header */
+  .otp-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 700;
+    color: #c7d2fe;
+    font-family: var(--font-mono, monospace);
+    cursor: pointer;
+    transition: all var(--transition);
+    flex-shrink: 0;
+    line-height: 1.2;
+  }
+
+  .otp-pill:hover {
+    background: rgba(99, 102, 241, 0.28);
+    border-color: var(--accent);
+    color: #ffffff;
+    transform: translateY(-1px);
+  }
+
+  .otp-pill.copied {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: var(--green);
+    color: var(--green-soft, #6ee7b7);
   }
 
   .message-header-right {
@@ -364,6 +505,84 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
+  /* Quick Action Banner */
+  .quick-action-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 14px;
+    margin: 10px 0 6px 0;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(168, 85, 247, 0.1));
+    border: 1px solid rgba(99, 102, 241, 0.32);
+    border-radius: var(--radius-md);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  .action-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .action-icon-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+  }
+
+  .action-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .action-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .action-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .action-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: var(--accent);
+    color: #ffffff;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all var(--transition);
+    white-space: nowrap;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  }
+
+  .action-cta-btn:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
+  }
+
   /* Body Toolbar */
   .message-body-toolbar {
     display: flex;
@@ -418,19 +637,56 @@
     border-color: var(--border-focus);
   }
 
+  .theme-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .theme-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+    display: inline-block;
+  }
+
+  .theme-dot.is-dark {
+    background: #6366f1;
+  }
+
   .ui-icon-sm {
     width: 13px;
     height: 13px;
   }
 
+  .ui-icon-xs {
+    width: 12px;
+    height: 12px;
+  }
+
   /* Iframe rendering */
+  .iframe-canvas-wrap {
+    width: 100%;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #ffffff;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition);
+  }
+
+  .iframe-canvas-wrap.dark-canvas {
+    background: #0f141c;
+    border-color: rgba(99, 102, 241, 0.3);
+  }
+
   .message-iframe {
     width: 100%;
     min-height: 140px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: #ffffff;
-    box-shadow: var(--shadow-sm);
+    border: none;
+    display: block;
+    background: transparent;
     transition: height 150ms ease-in-out;
   }
 

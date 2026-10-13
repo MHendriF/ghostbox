@@ -13,6 +13,7 @@
     onDeleteInbox: () => void;
     onLock: () => void;
     onShowToast: (msg: string) => void;
+    onCleanEmptyInboxes?: () => void | Promise<void>;
   }
 
   let {
@@ -26,6 +27,7 @@
     onDeleteInbox,
     onLock,
     onShowToast,
+    onCleanEmptyInboxes,
   }: Props = $props();
 
   let copied = $state(false);
@@ -33,6 +35,14 @@
   let searchQuery = $state('');
   let searchInputEl: HTMLInputElement | null = $state(null);
   let comboboxWrapper: HTMLDivElement | null = $state(null);
+
+  let confirmingClean = $state(false);
+  let isCleaning = $state(false);
+  let confirmTimeout: number | null = null;
+
+  let emptyCount = $derived(
+    inboxes.filter((inb) => (inb.message_count ?? 0) === 0).length
+  );
 
   let filteredInboxes = $derived(
     inboxes.filter((inb) => {
@@ -65,9 +75,45 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && isSelectOpen) {
-      isSelectOpen = false;
+    if (e.key === 'Escape') {
+      if (isSelectOpen) {
+        isSelectOpen = false;
+      }
+      if (confirmingClean) {
+        confirmingClean = false;
+      }
     }
+  }
+
+  async function triggerCleanEmpty(e: MouseEvent) {
+    e.stopPropagation();
+    if (emptyCount === 0 || isCleaning) return;
+
+    if (!confirmingClean) {
+      confirmingClean = true;
+      if (confirmTimeout) clearTimeout(confirmTimeout);
+      confirmTimeout = window.setTimeout(() => {
+        confirmingClean = false;
+      }, 3500);
+      return;
+    }
+
+    if (confirmTimeout) clearTimeout(confirmTimeout);
+    confirmingClean = false;
+    if (!onCleanEmptyInboxes) return;
+
+    isCleaning = true;
+    try {
+      await onCleanEmptyInboxes();
+    } finally {
+      isCleaning = false;
+    }
+  }
+
+  function cancelConfirmClean(e: MouseEvent) {
+    e.stopPropagation();
+    if (confirmTimeout) clearTimeout(confirmTimeout);
+    confirmingClean = false;
   }
 
   onMount(() => {
@@ -76,6 +122,7 @@
   });
 
   onDestroy(() => {
+    if (confirmTimeout) clearTimeout(confirmTimeout);
     document.removeEventListener('click', handleClickOutside);
     document.removeEventListener('keydown', handleKeydown);
   });
@@ -112,87 +159,161 @@
         </button>
       {/if}
     </div>
-    <div class="inbox-switch-wrapper" bind:this={comboboxWrapper}>
-      <span class="switch-label">Switch Inbox:</span>
-      <div class="combobox-container">
-        <button
-          type="button"
-          class="combobox-trigger"
-          class:open={isSelectOpen}
-          onclick={toggleDropdown}
-          aria-haspopup="listbox"
-          aria-expanded={isSelectOpen}
-          aria-label="Switch active inbox"
+
+    <div class="hero-top-right">
+      <!-- Segmented Inbox Management Capsule -->
+      <div class="inbox-capsule-control">
+        <div
+          class="capsule-stat"
+          title="{inboxes.length} active inboxes ({inboxes.length - emptyCount} with messages, {emptyCount} empty)"
         >
-          <span class="trigger-text">{activeAddress || 'Select an inbox...'}</span>
-          <svg class="ui-icon chevron-icon" class:rotate={isSelectOpen} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
+          <svg class="ui-icon-xs stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
           </svg>
-        </button>
+          <span class="stat-count">{inboxes.length}</span>
+          <span class="stat-label">Inboxes</span>
+        </div>
 
-        {#if isSelectOpen}
-          <div class="combobox-dropdown" role="listbox">
-            <div class="combobox-search-box">
-              <svg class="combobox-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                bind:this={searchInputEl}
-                type="text"
-                class="combobox-search-input"
-                placeholder="Search inbox..."
-                bind:value={searchQuery}
-                onclick={(e) => e.stopPropagation()}
-                onkeydown={(e) => {
-                  if (e.key === 'Escape') {
-                    isSelectOpen = false;
-                  } else if (e.key === 'Enter' && filteredInboxes.length > 0) {
-                    handleSelect(filteredInboxes[0].address);
-                  }
-                }}
-              />
-              {#if searchQuery}
-                <button
-                  type="button"
-                  class="search-clear-btn"
-                  onclick={() => (searchQuery = '')}
-                  title="Clear search"
-                >
-                  ✕
-                </button>
-              {/if}
-            </div>
+        <span class="capsule-divider"></span>
 
-            <div class="combobox-meta">
-              <span>{filteredInboxes.length} of {inboxes.length} inboxes</span>
-            </div>
-
-            <div class="combobox-list">
-              {#if filteredInboxes.length === 0}
-                <div class="combobox-empty">
-                  No inbox matching "{searchQuery}"
-                </div>
+        {#if onCleanEmptyInboxes}
+          <div class="capsule-action-wrap">
+            <button
+              type="button"
+              class="capsule-action-btn"
+              class:is-confirming={confirmingClean}
+              class:has-empty={emptyCount > 0}
+              class:is-empty-zero={emptyCount === 0}
+              disabled={emptyCount === 0 || isCleaning}
+              onclick={triggerCleanEmpty}
+              title={emptyCount === 0
+                ? 'All inboxes currently have incoming emails'
+                : confirmingClean
+                  ? 'Click again to permanently delete empty inboxes'
+                  : `Clean ${emptyCount} empty inboxes without messages`}
+            >
+              {#if isCleaning}
+                <span class="spinner-mini"></span>
+                <span class="action-text">Cleaning...</span>
+              {:else if confirmingClean}
+                <svg class="ui-icon-xs confirm-check-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span class="action-text confirm-text">Confirm ({emptyCount})</span>
               {:else}
-                {#each filteredInboxes as inb (inb.address)}
-                  <button
-                    type="button"
-                    class="combobox-item"
-                    class:active={inb.address === activeAddress}
-                    onclick={() => handleSelect(inb.address)}
-                  >
-                    <span class="item-text">{inb.address}</span>
-                    {#if inb.address === activeAddress}
-                      <svg class="ui-icon item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    {/if}
-                  </button>
-                {/each}
+                <svg class="ui-icon-xs action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+                {#if emptyCount > 0}
+                  <span class="action-text">Clean <span class="empty-badge">{emptyCount}</span></span>
+                {:else}
+                  <span class="action-text muted">All Active</span>
+                {/if}
               {/if}
-            </div>
+            </button>
+            {#if confirmingClean}
+              <button
+                type="button"
+                class="cancel-confirm-btn"
+                onclick={cancelConfirmClean}
+                title="Cancel cleaning"
+              >
+                ✕
+              </button>
+            {/if}
           </div>
         {/if}
+      </div>
+
+      <div class="inbox-switch-wrapper" bind:this={comboboxWrapper}>
+        <span class="switch-label">Switch:</span>
+        <div class="combobox-container">
+          <button
+            type="button"
+            class="combobox-trigger"
+            class:open={isSelectOpen}
+            onclick={toggleDropdown}
+            aria-haspopup="listbox"
+            aria-expanded={isSelectOpen}
+            aria-label="Switch active inbox"
+          >
+            <span class="trigger-text">{activeAddress || 'Select an inbox...'}</span>
+            <svg class="ui-icon chevron-icon" class:rotate={isSelectOpen} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          {#if isSelectOpen}
+            <div class="combobox-dropdown" role="listbox">
+              <div class="combobox-search-box">
+                <svg class="combobox-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  bind:this={searchInputEl}
+                  type="text"
+                  class="combobox-search-input"
+                  placeholder="Search inbox..."
+                  bind:value={searchQuery}
+                  onclick={(e) => e.stopPropagation()}
+                  onkeydown={(e) => {
+                    if (e.key === 'Escape') {
+                      isSelectOpen = false;
+                    } else if (e.key === 'Enter' && filteredInboxes.length > 0) {
+                      handleSelect(filteredInboxes[0].address);
+                    }
+                  }}
+                />
+                {#if searchQuery}
+                  <button
+                    type="button"
+                    class="search-clear-btn"
+                    onclick={() => (searchQuery = '')}
+                    title="Clear search"
+                  >
+                    ✕
+                  </button>
+                {/if}
+              </div>
+
+              <div class="combobox-meta">
+                <span>{filteredInboxes.length} of {inboxes.length} inboxes</span>
+              </div>
+
+              <div class="combobox-list">
+                {#if filteredInboxes.length === 0}
+                  <div class="combobox-empty">
+                    No inbox matching "{searchQuery}"
+                  </div>
+                {:else}
+                  {#each filteredInboxes as inb (inb.address)}
+                    <button
+                      type="button"
+                      class="combobox-item"
+                      class:active={inb.address === activeAddress}
+                      onclick={() => handleSelect(inb.address)}
+                    >
+                      <span class="item-text">{inb.address}</span>
+                      {#if inb.message_count !== undefined}
+                        <span class="item-msg-pill" class:is-empty={inb.message_count === 0}>
+                          {inb.message_count} {inb.message_count === 1 ? 'msg' : 'msgs'}
+                        </span>
+                      {/if}
+                      {#if inb.address === activeAddress}
+                        <svg class="ui-icon item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      {/if}
+                    </button>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
   </div>
@@ -331,6 +452,189 @@
     background: rgba(244, 63, 94, 0.15);
     border-color: var(--red);
     color: var(--red);
+  }
+
+  .hero-top-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .inbox-capsule-control {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 4px 2px 10px;
+    backdrop-filter: blur(8px);
+    transition: all var(--transition);
+  }
+
+  .inbox-capsule-control:hover {
+    border-color: var(--border-hover);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .capsule-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    user-select: none;
+    padding-right: 4px;
+  }
+
+  .stat-icon {
+    width: 14px;
+    height: 14px;
+    color: var(--accent-soft);
+  }
+
+  .stat-count {
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .capsule-divider {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+
+  .capsule-action-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .capsule-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .capsule-action-btn.has-empty {
+    color: var(--text-secondary);
+  }
+
+  .capsule-action-btn.has-empty:hover:not(:disabled) {
+    background: rgba(244, 63, 94, 0.12);
+    border-color: rgba(244, 63, 94, 0.3);
+    color: #fda4af;
+  }
+
+  .capsule-action-btn.is-empty-zero {
+    cursor: default;
+    opacity: 0.65;
+  }
+
+  .capsule-action-btn.is-confirming {
+    background: rgba(244, 63, 94, 0.2);
+    border-color: rgba(244, 63, 94, 0.5);
+    color: #ff4d6d;
+    animation: pulseConfirm 1.2s infinite ease-in-out;
+  }
+
+  @keyframes pulseConfirm {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4); }
+    50% { box-shadow: 0 0 0 4px rgba(244, 63, 94, 0); }
+  }
+
+  .confirm-check-ico {
+    width: 13px;
+    height: 13px;
+    color: #ff4d6d;
+  }
+
+  .action-icon {
+    width: 13px;
+    height: 13px;
+    color: currentColor;
+    opacity: 0.8;
+  }
+
+  .action-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.2;
+  }
+
+  .action-text.muted {
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+
+  .confirm-text {
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+
+  .empty-badge {
+    background: rgba(244, 63, 94, 0.2);
+    color: #fda4af;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 999px;
+    border: 1px solid rgba(244, 63, 94, 0.3);
+  }
+
+  .cancel-confirm-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    transition: all var(--transition);
+  }
+
+  .cancel-confirm-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.16);
+    border-color: var(--border-hover);
+  }
+
+  .spinner-mini {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spinMini 0.8s linear infinite;
+  }
+
+  @keyframes spinMini {
+    to { transform: rotate(360deg); }
   }
 
   .inbox-switch-wrapper {
@@ -582,7 +886,39 @@
     flex-shrink: 0;
   }
 
+  .item-msg-pill {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.14);
+    color: var(--accent-soft);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    white-space: nowrap;
+    letter-spacing: -0.2px;
+  }
+
+  .item-msg-pill.is-empty {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border-color: var(--border);
+    font-weight: 500;
+  }
+
   @media (max-width: 640px) {
+    .hero-top-right {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .inbox-capsule-control {
+      width: 100%;
+      justify-content: space-between;
+      box-sizing: border-box;
+    }
+
     .inbox-switch-wrapper {
       width: 100%;
       justify-content: space-between;
