@@ -50,7 +50,20 @@ export default {
    * Scheduled handler - periodic data retention and cleanup job
    */
   async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const retentionHours = parseInt(env.RETENTION_HOURS || '24', 10) || 24;
+    const retentionHours = parseInt(env.RETENTION_HOURS || '0', 10);
+
+    // Retention cleanup disabled if RETENTION_HOURS <= 0 (manual deletion only)
+    if (isNaN(retentionHours) || retentionHours <= 0) {
+      console.log(
+        JSON.stringify({
+          level: 'info',
+          event: 'cron_retention_skipped',
+          reason: 'automatic retention disabled; emails preserved for manual deletion',
+          scheduledTime: event.scheduledTime,
+        })
+      );
+      return;
+    }
 
     console.log(
       JSON.stringify({

@@ -41,6 +41,9 @@ AUTH_PASSCODE = "<YOUR_MASTER_PASSCODE>"
 # TELEGRAM_CHAT_ID = "<YOUR_CHAT_ID>"
 # TELEGRAM_THREAD_ID = "<YOUR_TOPIC_THREAD_ID>" # Optional: Telegram Forum Topic ID
 
+# Optional Email Forwarding to a verified destination address
+# FORWARD_EMAIL = "your-email@example.com"
+
 # ---- Static assets (web frontend) ----
 [assets]
 directory = "./dist"

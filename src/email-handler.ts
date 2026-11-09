@@ -11,6 +11,7 @@ export interface EmailHandlerEnv {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   TELEGRAM_THREAD_ID?: string;
+  FORWARD_EMAIL?: string;
 }
 
 const DEFAULT_MAX_RAW_SIZE = 1024 * 1024; // 1 MB default
@@ -142,6 +143,39 @@ export async function handleEmail(
             error: tgErr?.message || String(tgErr),
           })
         );
+      }
+    }
+
+    // 5. Forward email to verified destination address if configured
+    if (env.FORWARD_EMAIL) {
+      const forwardTargets = env.FORWARD_EMAIL.split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+
+      for (const target of forwardTargets) {
+        try {
+          await message.forward(target);
+          console.log(
+            JSON.stringify({
+              level: 'info',
+              event: 'email_forwarded',
+              to: target,
+              originalTo: to,
+              from,
+              messageId,
+            })
+          );
+        } catch (forwardErr: any) {
+          console.warn(
+            JSON.stringify({
+              level: 'warn',
+              event: 'email_forward_error',
+              to: target,
+              originalTo: to,
+              error: forwardErr?.message || String(forwardErr),
+            })
+          );
+        }
       }
     }
   } catch (err: any) {

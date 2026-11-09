@@ -670,6 +670,42 @@ test('sorting logic: correctly sorts inboxes by message count and dates', () => 
   assert.equal(byDateDesc[2].address, 'c@domain.com');
 });
 
+// Test 26: Retention hours configuration check
+function isRetentionActive(retentionHoursConfig) {
+  const hours = parseInt(retentionHoursConfig || '0', 10);
+  return !isNaN(hours) && hours > 0;
+}
+
+test('retention configuration: accurately determines active vs disabled state', () => {
+  assert.equal(isRetentionActive('0'), false);
+  assert.equal(isRetentionActive('-1'), false);
+  assert.equal(isRetentionActive(''), false);
+  assert.equal(isRetentionActive(undefined), false);
+  assert.equal(isRetentionActive('24'), true);
+  assert.equal(isRetentionActive('720'), true);
+});
+
+// Test 27: Email forward target parsing
+function parseForwardTargets(forwardEmailConfig) {
+  if (!forwardEmailConfig) return [];
+  return forwardEmailConfig
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+test('email forward parser: normalizes and extracts valid forward destination list', () => {
+  assert.deepEqual(parseForwardTargets(''), []);
+  assert.deepEqual(parseForwardTargets(undefined), []);
+  assert.deepEqual(parseForwardTargets('  rinjaniglobal.id@gmail.com  '), ['rinjaniglobal.id@gmail.com']);
+  assert.deepEqual(
+    parseForwardTargets('rinjaniglobal.id@gmail.com, test@example.com ,  '),
+    ['rinjaniglobal.id@gmail.com', 'test@example.com']
+  );
+});
+
+
+
 
 
 
