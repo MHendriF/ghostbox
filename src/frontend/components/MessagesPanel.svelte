@@ -76,6 +76,45 @@
     });
   });
 
+  let currentPage = $state(1);
+  let pageSize = $state(10);
+
+  let totalPages = $derived(
+    Math.max(1, Math.ceil(filteredMessages.length / pageSize))
+  );
+
+  let paginatedMessages = $derived(
+    filteredMessages.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  );
+
+  let startIndex = $derived(
+    filteredMessages.length === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  );
+  let endIndex = $derived(
+    Math.min(currentPage * pageSize, filteredMessages.length)
+  );
+
+  // Reset page when active inbox, search query, or filter changes
+  $effect(() => {
+    // track dependencies
+    activeInboxAddress;
+    searchQuery;
+    activeFilter;
+    sortOrder;
+    currentPage = 1;
+  });
+
+  // Clamp current page if messages shrink
+  $effect(() => {
+    if (currentPage > totalPages) {
+      currentPage = totalPages;
+    }
+  });
+
+  function goToPage(p: number) {
+    currentPage = Math.min(Math.max(1, p), totalPages);
+  }
+
   function toggleOpen(id: string) {
     if (openMessageIds.includes(id)) {
       openMessageIds = openMessageIds.filter((item) => item !== id);
@@ -225,7 +264,7 @@
         <button type="button" class="btn btn-secondary" onclick={resetSearch}>Clear Filter</button>
       </div>
     {:else}
-      {#each filteredMessages as msg (msg.id)}
+      {#each paginatedMessages as msg (msg.id)}
         <MessageCard
           {msg}
           isOpen={openMessageIds.includes(msg.id)}
@@ -238,6 +277,79 @@
       {/each}
     {/if}
   </div>
+
+  {#if filteredMessages.length > 0}
+    <div class="panel-pagination-bar">
+      <div class="pagination-meta-info">
+        <span>
+          Showing <strong class="meta-range">{startIndex}–{endIndex}</strong> of <strong class="meta-total">{filteredMessages.length}</strong> {filteredMessages.length === 1 ? 'message' : 'messages'}
+        </span>
+        <div class="page-size-selector">
+          <label for="pageSizeSelect" class="size-label">Per page:</label>
+          <select
+            id="pageSizeSelect"
+            class="page-size-select"
+            bind:value={pageSize}
+            onchange={() => (currentPage = 1)}
+            aria-label="Messages per page"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </select>
+        </div>
+      </div>
+
+      {#if totalPages > 1}
+        <div class="pagination-nav-cluster">
+          <button
+            type="button"
+            class="page-nav-btn"
+            disabled={currentPage === 1}
+            onclick={() => goToPage(1)}
+            title="First page"
+            aria-label="First page"
+          >
+            «
+          </button>
+          <button
+            type="button"
+            class="page-nav-btn prev-btn"
+            disabled={currentPage === 1}
+            onclick={() => goToPage(currentPage - 1)}
+            title="Previous page"
+            aria-label="Previous page"
+          >
+            ‹ Prev
+          </button>
+          <span class="page-num-display">
+            Page <strong class="current-num">{currentPage}</strong> of <span class="total-num">{totalPages}</span>
+          </span>
+          <button
+            type="button"
+            class="page-nav-btn next-btn"
+            disabled={currentPage === totalPages}
+            onclick={() => goToPage(currentPage + 1)}
+            title="Next page"
+            aria-label="Next page"
+          >
+            Next ›
+          </button>
+          <button
+            type="button"
+            class="page-nav-btn"
+            disabled={currentPage === totalPages}
+            onclick={() => goToPage(totalPages)}
+            title="Last page"
+            aria-label="Last page"
+          >
+            »
+          </button>
+        </div>
+      {/if}
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -481,7 +593,117 @@
     color: var(--text-secondary);
   }
 
+  .panel-pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(18, 18, 20, 0.7);
+    border-top: 1px solid var(--border-subtle);
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .pagination-meta-info {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .meta-range,
+  .meta-total {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .page-size-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .size-label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  .page-size-select {
+    padding: 2px 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    color: var(--text-primary);
+    font-size: 11.5px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+  }
+
+  .page-size-select:hover {
+    border-color: var(--border-hover);
+  }
+
+  .pagination-nav-cluster {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .page-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .page-nav-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+  }
+
+  .page-nav-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .page-num-display {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 0 8px;
+    font-family: var(--font-mono);
+  }
+
+  .current-num {
+    color: var(--text-primary);
+  }
+
   @media (max-width: 640px) {
+    .panel-pagination-bar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .pagination-meta-info {
+      justify-content: space-between;
+    }
+
+    .pagination-nav-cluster {
+      justify-content: center;
+    }
+
     .panel-header {
       padding: 10px 12px;
     }

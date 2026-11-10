@@ -158,11 +158,37 @@ export async function deleteInbox(
   address: string,
   sessionId?: string
 ): Promise<void> {
+  const normalized = (address || '').trim().toLowerCase();
   if (sessionId) {
-    await unlinkInboxFromSession(db, sessionId, address).catch(() => {});
+    await unlinkInboxFromSession(db, sessionId, normalized).catch(() => {});
   }
-  await db.prepare('DELETE FROM messages WHERE inbox_address = ?').bind(address).run();
-  await db.prepare('DELETE FROM inboxes WHERE address = ?').bind(address).run();
+  await db.prepare('DELETE FROM messages WHERE lower(inbox_address) = lower(?)').bind(normalized).run();
+  await db.prepare('DELETE FROM inboxes WHERE lower(address) = lower(?)').bind(normalized).run();
+}
+
+export async function deleteInboxesBatch(
+  db: D1Database,
+  addresses: string[],
+  sessionId?: string
+): Promise<number> {
+  const uniqueAddresses = Array.from(
+    new Set(addresses.map((a) => (a || '').trim().toLowerCase()).filter(Boolean))
+  );
+  if (uniqueAddresses.length === 0) return 0;
+
+  const statements: D1PreparedStatement[] = [];
+  for (const addr of uniqueAddresses) {
+    if (sessionId) {
+      statements.push(
+        db.prepare('DELETE FROM session_inboxes WHERE session_id = ? AND inbox_address = ?').bind(sessionId, addr)
+      );
+    }
+    statements.push(db.prepare('DELETE FROM messages WHERE inbox_address = ?').bind(addr));
+    statements.push(db.prepare('DELETE FROM inboxes WHERE address = ?').bind(addr));
+  }
+
+  await db.batch(statements);
+  return uniqueAddresses.length;
 }
 
 // ---- Messages ----
@@ -239,9 +265,10 @@ export async function deleteMessage(
   messageId: string,
   inboxAddress: string
 ): Promise<boolean> {
+  const normalized = (inboxAddress || '').trim().toLowerCase();
   const res = await db
-    .prepare('DELETE FROM messages WHERE id = ? AND inbox_address = ?')
-    .bind(messageId, inboxAddress)
+    .prepare('DELETE FROM messages WHERE id = ? AND lower(inbox_address) = lower(?)')
+    .bind(messageId, normalized)
     .run();
   return (res.meta?.changes ?? 0) > 0;
 }

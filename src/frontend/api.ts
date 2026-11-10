@@ -120,6 +120,13 @@ export class ApiClient {
     });
   }
 
+  async deleteInboxesBatch(addresses: string[]): Promise<{ ok: boolean; count: number }> {
+    return this.fetchJson<{ ok: boolean; count: number }>('/api/inboxes/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ addresses }),
+    });
+  }
+
   async cleanEmptyInboxes(): Promise<{ ok: boolean; deletedInboxes: number; deletedOrphans: number }> {
     return this.fetchJson<{ ok: boolean; deletedInboxes: number; deletedOrphans: number }>(
       '/api/inboxes/clean-empty',

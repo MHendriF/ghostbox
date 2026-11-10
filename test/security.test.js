@@ -816,6 +816,344 @@ test('telegram otp extraction: matches frontend accuracy and rejects false posit
   assert.equal(extractOtpTelegram('Bank Statement', 'Account 12345678 balance summary.'), null);
 });
 
+// Test 31: Pagination logic and slicing
+function paginateList(items, page, pageSize) {
+  const safePageSize = Math.max(1, pageSize);
+  const totalPages = Math.max(1, Math.ceil(items.length / safePageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * safePageSize;
+  const sliced = items.slice(start, start + safePageSize);
+  const startIndex = items.length === 0 ? 0 : start + 1;
+  const endIndex = Math.min(start + safePageSize, items.length);
+
+  return {
+    currentPage: safePage,
+    totalPages,
+    pageSize: safePageSize,
+    totalItems: items.length,
+    startIndex,
+    endIndex,
+    items: sliced,
+  };
+}
+
+test('pagination logic: calculates pages, boundaries, and slices cleanly', () => {
+  const dataset = Array.from({ length: 25 }, (_, i) => `item_${i + 1}`);
+
+  // Page 1 of 3 (10 per page)
+  const p1 = paginateList(dataset, 1, 10);
+  assert.equal(p1.totalPages, 3);
+  assert.equal(p1.currentPage, 1);
+  assert.equal(p1.items.length, 10);
+  assert.equal(p1.items[0], 'item_1');
+  assert.equal(p1.items[9], 'item_10');
+  assert.equal(p1.startIndex, 1);
+  assert.equal(p1.endIndex, 10);
+
+  // Page 3 of 3 (last page with remainder 5)
+  const p3 = paginateList(dataset, 3, 10);
+  assert.equal(p3.currentPage, 3);
+  assert.equal(p3.items.length, 5);
+  assert.equal(p3.items[0], 'item_21');
+  assert.equal(p3.items[4], 'item_25');
+  assert.equal(p3.startIndex, 21);
+  assert.equal(p3.endIndex, 25);
+
+  // Out of bounds: page 99 clamps to last page
+  const pOver = paginateList(dataset, 99, 10);
+  assert.equal(pOver.currentPage, 3);
+  assert.equal(pOver.items.length, 5);
+
+  // Negative or 0 page clamps to 1
+  const pZero = paginateList(dataset, 0, 10);
+  assert.equal(pZero.currentPage, 1);
+
+  // Empty dataset
+  const pEmpty = paginateList([], 1, 10);
+  assert.equal(pEmpty.totalPages, 1);
+  assert.equal(pEmpty.items.length, 0);
+  assert.equal(pEmpty.startIndex, 0);
+  assert.equal(pEmpty.endIndex, 0);
+});
+
+// Test 32: Inbox sidebar pagination state machine (no snap-back on manual navigation)
+function createInboxPaginationState(initialInboxes, initialActiveAddress = '', pageSize = 8) {
+  let inboxes = [...initialInboxes];
+  let activeAddress = initialActiveAddress;
+  let category = 'all';
+  let searchQuery = '';
+  let inboxPage = 1;
+
+  let lastFilterKey = 'all:';
+  let lastSyncedAddress = '';
+
+  function getFilteredInboxes() {
+    return inboxes.filter((inb) => {
+      if (category === 'active' && (inb.message_count ?? 0) === 0) return false;
+      if (category === 'empty' && (inb.message_count ?? 0) > 0) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        if (!inb.address.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function syncEffects() {
+    const filtered = getFilteredInboxes();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+    // Filter effect
+    const currentKey = `${category}:${searchQuery}`;
+    if (currentKey !== lastFilterKey) {
+      lastFilterKey = currentKey;
+      inboxPage = 1;
+    } else if (inboxPage > totalPages) {
+      inboxPage = totalPages;
+    }
+
+    // Active address sync effect
+    if (activeAddress && activeAddress !== lastSyncedAddress && filtered.length > 0) {
+      lastSyncedAddress = activeAddress;
+      const idx = filtered.findIndex((i) => i.address === activeAddress);
+      if (idx !== -1) {
+        inboxPage = Math.floor(idx / pageSize) + 1;
+      }
+    } else if (!activeAddress) {
+      lastSyncedAddress = '';
+    }
+  }
+
+  // Initial sync
+  syncEffects();
+
+  return {
+    nextPage() {
+      const filtered = getFilteredInboxes();
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      inboxPage = Math.min(totalPages, inboxPage + 1);
+      syncEffects();
+    },
+    prevPage() {
+      inboxPage = Math.max(1, inboxPage - 1);
+      syncEffects();
+    },
+    selectInbox(addr) {
+      activeAddress = addr;
+      syncEffects();
+    },
+    setCategory(cat) {
+      category = cat;
+      syncEffects();
+    },
+    setSearch(q) {
+      searchQuery = q;
+      syncEffects();
+    },
+    getPage() {
+      return inboxPage;
+    },
+    getTotalPages() {
+      const filtered = getFilteredInboxes();
+      return Math.max(1, Math.ceil(filtered.length / pageSize));
+    },
+  };
+}
+
+test('inbox sidebar pagination: allows manual navigation without snapping back to active address', () => {
+  // Create 20 mock inboxes (8 per page = 3 pages)
+  const mockInboxes = Array.from({ length: 20 }, (_, i) => ({
+    address: `user${i + 1}@example.com`,
+    message_count: i % 2 === 0 ? 3 : 0,
+    created_at: new Date(Date.now() - i * 1000).toISOString(),
+  }));
+
+  // Initialized with user1 (page 1) active
+  const state = createInboxPaginationState(mockInboxes, 'user1@example.com', 8);
+  assert.equal(state.getPage(), 1);
+  assert.equal(state.getTotalPages(), 3);
+
+  // User clicks Next page: should advance to page 2 and STAY on page 2 (not snap back to page 1)
+  state.nextPage();
+  assert.equal(state.getPage(), 2);
+
+  // User clicks Next page again: should advance to page 3
+  state.nextPage();
+  assert.equal(state.getPage(), 3);
+
+  // User clicks Prev page: should go back to page 2
+  state.prevPage();
+  assert.equal(state.getPage(), 2);
+
+  // User selects an inbox on page 3 (user19 is index 18 -> page 3)
+  state.selectInbox('user19@example.com');
+  assert.equal(state.getPage(), 3);
+
+  // User searches for a term: page should reset to 1
+  state.setSearch('user1');
+  assert.equal(state.getPage(), 1);
+
+  // User clears search: page remains 1
+  state.setSearch('');
+  assert.equal(state.getPage(), 1);
+
+  // User switches category filter: page resets to 1
+  state.nextPage(); // navigate to page 2
+  assert.equal(state.getPage(), 2);
+  state.setCategory('empty'); // filter switches -> resets to 1
+  assert.equal(state.getPage(), 1);
+});
+
+// Helper for Test 33: batch address validation
+function sanitizeBatchAddresses(raw) {
+  if (!Array.isArray(raw)) return [];
+  const cleaned = raw
+    .filter((a) => typeof a === 'string' && a.trim().length > 0)
+    .map((a) => a.trim().toLowerCase());
+  return Array.from(new Set(cleaned)).slice(0, 100);
+}
+
+test('batch delete: sanitizes, dedupes, and limits address list', () => {
+  const input = [
+    'User1@example.com ',
+    'user1@example.com',
+    '  user2@example.com',
+    '',
+    '   ',
+    null,
+    123,
+    'user3@example.com',
+  ];
+
+  const result = sanitizeBatchAddresses(input);
+  assert.deepEqual(result, ['user1@example.com', 'user2@example.com', 'user3@example.com']);
+
+  // Enforces max limit of 100 items
+  const largeList = Array.from({ length: 150 }, (_, i) => `account_${i}@domain.com`);
+  const capped = sanitizeBatchAddresses(largeList);
+  assert.equal(capped.length, 100);
+});
+
+test('multi-select state machine: manages page selection and filtered selection', () => {
+  const inboxes = Array.from({ length: 16 }, (_, i) => ({
+    address: `test${i + 1}@domain.com`,
+  }));
+
+  let selectedAddresses = [];
+  let isSelectMode = true;
+
+  function toggleSelect(addr) {
+    if (selectedAddresses.includes(addr)) {
+      selectedAddresses = selectedAddresses.filter((a) => a !== addr);
+    } else {
+      selectedAddresses = [...selectedAddresses, addr];
+    }
+  }
+
+  function selectAllOnPage(pageItems) {
+    const set = new Set(selectedAddresses);
+    for (const inb of pageItems) {
+      set.add(inb.address);
+    }
+    selectedAddresses = Array.from(set);
+  }
+
+  function clearAll() {
+    selectedAddresses = [];
+  }
+
+  // Toggle single item
+  toggleSelect('test1@domain.com');
+  assert.deepEqual(selectedAddresses, ['test1@domain.com']);
+
+  // Toggle same item off
+  toggleSelect('test1@domain.com');
+  assert.deepEqual(selectedAddresses, []);
+
+  // Select page 1 (first 8 items)
+  const page1 = inboxes.slice(0, 8);
+  selectAllOnPage(page1);
+  assert.equal(selectedAddresses.length, 8);
+  assert.ok(selectedAddresses.includes('test1@domain.com'));
+  assert.ok(selectedAddresses.includes('test8@domain.com'));
+
+  // Clear selection
+  clearAll();
+  assert.equal(selectedAddresses.length, 0);
+});
+
+// Test 35: Case-insensitive address normalization for deletion queries
+test('address normalization: cleanly handles mixed case for message and inbox deletion', () => {
+  const normalizeAddress = (addr) => (addr || '').trim().toLowerCase();
+
+  assert.equal(normalizeAddress('User.Test@RinjaniGlobal.com'), 'user.test@rinjaniglobal.com');
+  assert.equal(normalizeAddress('  ALICE@DOMAIN.COM  '), 'alice@domain.com');
+  assert.equal(normalizeAddress(''), '');
+  assert.equal(normalizeAddress(null), '');
+
+  const mockDbMessages = [
+    { id: 'msg_1', inbox_address: 'user@rinjaniglobal.com' },
+    { id: 'msg_2', inbox_address: 'admin@rinjaniglobal.com' },
+  ];
+
+  // Simulating query: DELETE FROM messages WHERE id = ? AND lower(inbox_address) = lower(?)
+  function simulateDeleteMessage(id, inputAddress) {
+    const target = normalizeAddress(inputAddress);
+    const initialLen = mockDbMessages.length;
+    const remaining = mockDbMessages.filter(
+      (m) => !(m.id === id && normalizeAddress(m.inbox_address) === target)
+    );
+    return remaining.length < initialLen;
+  }
+
+  // Mixed case request should successfully match and delete
+  assert.ok(simulateDeleteMessage('msg_1', 'USER@RinjaniGlobal.com'));
+});
+
+// Test 36: Local state update on message deletion
+test('message delete state sync: decrements inbox message_count and clamps to zero', () => {
+  let inboxes = [
+    { address: 'active@example.com', message_count: 2 },
+    { address: 'other@example.com', message_count: 5 },
+  ];
+  let messages = [
+    { id: 'm1', inbox_address: 'active@example.com' },
+    { id: 'm2', inbox_address: 'active@example.com' },
+  ];
+
+  function deleteLocalMessage(msgId, activeAddress) {
+    messages = messages.filter((m) => m.id !== msgId);
+    const targetAddr = (activeAddress || '').trim().toLowerCase();
+    inboxes = inboxes.map((inb) => {
+      if (inb.address.toLowerCase() === targetAddr) {
+        return {
+          ...inb,
+          message_count: Math.max(0, (inb.message_count ?? 1) - 1),
+        };
+      }
+      return inb;
+    });
+  }
+
+  // Delete first message
+  deleteLocalMessage('m1', 'ACTIVE@example.com');
+  assert.equal(messages.length, 1);
+  assert.equal(inboxes[0].message_count, 1);
+  assert.equal(inboxes[1].message_count, 5);
+
+  // Delete second message
+  deleteLocalMessage('m2', 'active@example.com');
+  assert.equal(messages.length, 0);
+  assert.equal(inboxes[0].message_count, 0);
+
+  // Delete again (already 0) -> clamps at 0, no negative count
+  deleteLocalMessage('m_nonexistent', 'active@example.com');
+  assert.equal(inboxes[0].message_count, 0);
+});
+
+
+
+
 
 
 

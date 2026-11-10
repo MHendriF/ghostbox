@@ -9,6 +9,7 @@ import {
   getMessages,
   deleteMessage,
   deleteInbox,
+  deleteInboxesBatch,
   ensureSession,
   deleteEmptyInboxes,
   deleteOrphanMessages,
@@ -286,9 +287,29 @@ api.post('/inboxes/clean-empty', async (c) => {
   });
 });
 
+// ---- POST /api/inboxes/batch-delete ----
+api.post('/inboxes/batch-delete', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  if (!body || !Array.isArray(body.addresses)) {
+    return c.json({ error: 'Invalid request: "addresses" array is required' }, 400);
+  }
+
+  const addresses = body.addresses
+    .filter((a: unknown): a is string => typeof a === 'string' && a.trim().length > 0)
+    .slice(0, 100);
+
+  if (addresses.length === 0) {
+    return c.json({ ok: true, count: 0 });
+  }
+
+  const sid = c.get('sessionId');
+  const count = await deleteInboxesBatch(c.env.DB, addresses, sid);
+  return c.json({ ok: true, count });
+});
+
 // ---- DELETE /api/inboxes/:address ----
 api.delete('/inboxes/:address', async (c) => {
-  const address = decodeURIComponent(c.req.param('address'));
+  const address = decodeURIComponent(c.req.param('address')).trim().toLowerCase();
   const sid = c.get('sessionId');
 
   await deleteInbox(c.env.DB, address, sid);
@@ -313,7 +334,7 @@ api.get('/inboxes/:address/messages', async (c) => {
 
 // ---- DELETE /api/inboxes/:address/messages/:id ----
 api.delete('/inboxes/:address/messages/:id', async (c) => {
-  const address = decodeURIComponent(c.req.param('address'));
+  const address = decodeURIComponent(c.req.param('address')).trim().toLowerCase();
   const messageId = c.req.param('id');
 
   const deleted = await deleteMessage(c.env.DB, messageId, address);

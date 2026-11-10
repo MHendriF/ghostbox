@@ -151,12 +151,14 @@
     try {
       await api.deleteInbox(target);
       showToast(`Inbox ${target} deleted`);
-      inboxes = inboxes.filter((i) => i.address !== target);
+      const targetLower = target.toLowerCase();
+      inboxes = inboxes.filter((i) => i.address.toLowerCase() !== targetLower);
+      messages = [];
+      knownMessageIds = new Set();
       loadInboxStats();
       if (inboxes.length > 0) {
         activeAddress = inboxes[0].address;
         isInitialLoad = true;
-        knownMessageIds = new Set();
         await loadMessages(activeAddress);
       } else {
         await handleQuickRandom(false);
@@ -180,12 +182,53 @@
     }
   }
 
+  async function handleBatchDeleteInboxes(addresses: string[]) {
+    if (!addresses || addresses.length === 0) return;
+    try {
+      const res = await api.deleteInboxesBatch(addresses);
+      showToast(`Deleted ${res.count} inboxes`);
+
+      const deletedSet = new Set(addresses.map((a) => a.toLowerCase()));
+      inboxes = inboxes.filter((i) => !deletedSet.has(i.address.toLowerCase()));
+      loadInboxStats();
+
+      // If activeAddress was among deleted, switch to first remaining or generate new
+      if (activeAddress && deletedSet.has(activeAddress.toLowerCase())) {
+        if (inboxes.length > 0) {
+          activeAddress = inboxes[0].address;
+          isInitialLoad = true;
+          knownMessageIds = new Set();
+          await loadMessages(activeAddress);
+        } else {
+          await handleQuickRandom(false);
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete selected inboxes');
+    }
+  }
+
   async function handleDeleteSingleMessage(messageId: string) {
     if (!activeAddress) return;
     try {
       await api.deleteMessage(activeAddress, messageId);
       messages = messages.filter((m) => m.id !== messageId);
       knownMessageIds.delete(messageId);
+
+      // Decrement message_count on active inbox in local inboxes array
+      const targetAddr = activeAddress.toLowerCase();
+      inboxes = inboxes.map((inb) => {
+        if (inb.address.toLowerCase() === targetAddr) {
+          const currentCount = inb.message_count ?? 1;
+          return {
+            ...inb,
+            message_count: Math.max(0, currentCount - 1),
+          };
+        }
+        return inb;
+      });
+      loadInboxStats();
+
       showToast('Message deleted');
     } catch (err: any) {
       showToast(err.message || 'Failed to delete message');
@@ -340,6 +383,7 @@
         onQuickRandom={() => handleQuickRandom(true)}
         onToggleDrawer={() => (showNewDrawer = !showNewDrawer)}
         onCleanEmptyInboxes={handleCleanEmptyInboxes}
+        onBatchDeleteInboxes={handleBatchDeleteInboxes}
       />
     </div>
 

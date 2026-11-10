@@ -148,6 +148,28 @@
       onShowToast('Failed to copy forward text');
     }
   }
+
+  let showDeleteModal = $state(false);
+
+  function openDeleteModal(e?: MouseEvent) {
+    if (e) e.stopPropagation();
+    showDeleteModal = true;
+  }
+
+  function closeDeleteModal() {
+    showDeleteModal = false;
+  }
+
+  function confirmDelete() {
+    showDeleteModal = false;
+    onDelete();
+  }
+
+  function handleModalKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      closeDeleteModal();
+    }
+  }
 </script>
 
 <div class="message-card" class:open={isOpen}>
@@ -253,7 +275,7 @@
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
         </button>
-        <button type="button" class="icon-btn delete-icon" onclick={onDelete} title="Delete message">
+        <button type="button" class="icon-btn delete-icon" onclick={openDeleteModal} title="Delete message">
           <svg class="ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
@@ -458,6 +480,56 @@
     </div>
   {/if}
 </div>
+
+{#if showDeleteModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    class="modal-overlay"
+    onclick={closeDeleteModal}
+    onkeydown={handleModalKeydown}
+    role="presentation"
+  >
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+      class="modal-card delete-modal"
+      onclick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-msg-title"
+      tabindex="-1"
+    >
+      <div class="delete-modal-icon">
+        <svg class="delete-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <line x1="10" y1="11" x2="10" y2="17" />
+          <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+      </div>
+
+      <h3 id="delete-msg-title" class="delete-modal-title">Delete Email?</h3>
+      <p class="delete-modal-desc">
+        Are you sure you want to permanently delete this email from <strong class="delete-sender">{senderDetails.displayName}</strong>?
+        {#if msg.subject}
+          <span class="delete-subject-badge">"{msg.subject}"</span>
+        {/if}
+      </p>
+
+      <div class="delete-modal-actions">
+        <button type="button" class="btn btn-secondary cancel-modal-btn" onclick={closeDeleteModal}>
+          Cancel
+        </button>
+        <button type="button" class="btn btn-danger-solid confirm-modal-btn" onclick={confirmDelete}>
+          <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+          <span>Delete Permanently</span>
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .message-card {
@@ -984,6 +1056,117 @@
   .empty-msg {
     font-style: italic;
     color: var(--text-muted);
+  }
+
+  /* Delete Confirmation Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    animation: fadeIn 120ms ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .delete-modal {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    animation: scaleIn 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .delete-modal-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--red);
+    margin: 0 auto 12px;
+  }
+
+  .delete-icon-svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .delete-modal-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .delete-modal-desc {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+
+  .delete-sender {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .delete-subject-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    word-break: break-all;
+    display: block;
+    margin-top: 6px;
+  }
+
+  .delete-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .cancel-modal-btn {
+    padding: 8px 14px;
+  }
+
+  .confirm-modal-btn {
+    padding: 8px 14px;
+    background: var(--red);
+    color: #ffffff;
+    border: 1px solid var(--red);
+    font-weight: 600;
+  }
+
+  .confirm-modal-btn:hover {
+    background: #dc2626;
   }
 
   @media (max-width: 640px) {
