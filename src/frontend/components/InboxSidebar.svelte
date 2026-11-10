@@ -71,7 +71,7 @@
   });
 
   let inboxPage = $state(1);
-  const inboxPageSize = 8;
+  const inboxPageSize = 20;
 
   let totalInboxPages = $derived(
     Math.max(1, Math.ceil(filteredInboxes.length / inboxPageSize))
@@ -698,6 +698,12 @@
     position: relative;
     display: flex;
     align-items: center;
+    z-index: 1;
+  }
+
+  :global(body:has(.modal-overlay)) .search-box {
+    z-index: 0;
+    pointer-events: none;
   }
 
   .search-icon {
@@ -763,7 +769,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: 480px;
+    max-height: 580px;
     overflow-y: auto;
     padding-right: 2px;
   }
@@ -995,7 +1001,7 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.75);
     backdrop-filter: blur(8px);
-    z-index: 10000;
+    z-index: 100000;
     display: flex;
     align-items: center;
     justify-content: center;

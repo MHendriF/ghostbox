@@ -453,6 +453,12 @@
     align-items: center;
     flex: 1;
     min-width: 200px;
+    z-index: 1;
+  }
+
+  :global(body:has(.modal-overlay)) .search-wrap {
+    z-index: 0;
+    pointer-events: none;
   }
 
   .search-icon {

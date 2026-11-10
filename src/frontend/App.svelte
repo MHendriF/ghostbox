@@ -471,12 +471,23 @@
   .sidebar-column {
     position: sticky;
     top: 16px;
+    z-index: 10;
+  }
+
+  .sidebar-column:has(:global(.modal-overlay)) {
+    z-index: 100000;
   }
 
   .workspace-main {
     min-width: 0;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 5;
+  }
+
+  .workspace-main:has(:global(.modal-overlay)) {
+    z-index: 100000;
   }
 
   .app-footer {

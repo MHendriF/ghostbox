@@ -417,7 +417,7 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.72);
     backdrop-filter: blur(8px);
-    z-index: 10000;
+    z-index: 100000;
     display: flex;
     align-items: center;
     justify-content: center;
