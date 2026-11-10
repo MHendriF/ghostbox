@@ -28,6 +28,7 @@ export interface AppConfig {
   authRequired?: boolean;
   usernameRequired?: boolean;
   autoRefreshMs?: number;
+  forwardEmail?: string | null;
 }
 
 export interface ToastItem {

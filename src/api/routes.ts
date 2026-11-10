@@ -27,6 +27,7 @@ export interface ApiEnv {
   AUTO_REFRESH_INTERVAL_MS?: string;
   DEFAULT_MESSAGES_LIMIT?: string;
   MAX_MESSAGES_LIMIT?: string;
+  FORWARD_EMAIL?: string;
 }
 
 type Variables = {
@@ -190,6 +191,7 @@ api.get('/config', (c) => {
     autoRefreshIntervalMs: refreshIntervalMs,
     authRequired,
     usernameRequired,
+    forwardEmail: (c.env.FORWARD_EMAIL || '').trim() || null,
   });
 });
 

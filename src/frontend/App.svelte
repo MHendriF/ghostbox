@@ -325,6 +325,7 @@
     mailDomain={config.mailDomain}
     {countdown}
     authRequired={!!config.authRequired}
+    forwardEmail={config.forwardEmail}
     onLock={handleLockSession}
   />
 
@@ -370,6 +371,7 @@
         {messages}
         activeInboxAddress={activeAddress}
         countdownSeconds={countdown}
+        forwardEmail={config.forwardEmail}
         onDeleteMessage={handleDeleteSingleMessage}
         onDownloadEml={handleDownloadEml}
         onShowToast={showToast}

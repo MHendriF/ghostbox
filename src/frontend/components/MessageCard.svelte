@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { Message } from '../types';
   import {
+    buildForwardMailto,
     extractActionLink,
     extractOtp,
+    formatForwardText,
     formatRelativeTime,
     formatTimestamp,
     getAvatarStyle,
@@ -16,16 +18,27 @@
   interface Props {
     msg: Message;
     isOpen: boolean;
+    forwardEmail?: string | null;
     onToggle: () => void;
     onDelete: () => void;
     onDownloadEml: () => void;
     onShowToast: (text: string) => void;
   }
 
-  let { msg, isOpen, onToggle, onDelete, onDownloadEml, onShowToast }: Props = $props();
+  let {
+    msg,
+    isOpen,
+    forwardEmail = null,
+    onToggle,
+    onDelete,
+    onDownloadEml,
+    onShowToast,
+  }: Props = $props();
 
   let bodyCopied = $state(false);
   let otpCopied = $state(false);
+  let forwardOpen = $state(false);
+  let forwardTarget = $state('');
   let showQuotes = $state(false);
   let viewMode = $state<'rendered' | 'raw'>('rendered');
   let htmlTheme = $state<'light' | 'dark'>('light');
@@ -89,6 +102,50 @@
       }
     } catch {
       iframeHeight = '480px';
+    }
+  }
+
+  $effect(() => {
+    if (!forwardTarget && forwardEmail) {
+      forwardTarget = forwardEmail;
+    }
+  });
+
+  async function handleQuickForward(e?: MouseEvent) {
+    if (e) e.stopPropagation();
+    const target = (forwardTarget || forwardEmail || '').trim();
+    const mailto = buildForwardMailto(msg, target);
+    const forwardText = formatForwardText(msg);
+
+    try {
+      await navigator.clipboard.writeText(forwardText);
+      onShowToast(
+        target
+          ? `Forward draft opened & copied for ${target}`
+          : 'Forward draft opened & content copied'
+      );
+    } catch {
+      onShowToast(target ? `Forward draft opened for ${target}` : 'Forward draft opened');
+    }
+
+    window.open(mailto, '_blank');
+  }
+
+  function handleToggleForwardBar(e?: MouseEvent) {
+    if (e) e.stopPropagation();
+    if (!isOpen) {
+      onToggle();
+    }
+    forwardOpen = !forwardOpen;
+  }
+
+  async function handleCopyForwardText() {
+    const text = formatForwardText(msg);
+    try {
+      await navigator.clipboard.writeText(text);
+      onShowToast('Forward text copied to clipboard');
+    } catch {
+      onShowToast('Failed to copy forward text');
     }
   }
 </script>
@@ -178,6 +235,17 @@
       {/if}
 
       <div class="icon-tools">
+        <button
+          type="button"
+          class="icon-btn forward-icon"
+          onclick={handleQuickForward}
+          title={forwardEmail ? `Forward email to ${forwardEmail} (mailto:)` : 'Forward email (mailto:)'}
+        >
+          <svg class="ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 10 20 15 15 20" />
+            <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+          </svg>
+        </button>
         <button type="button" class="icon-btn download-icon" onclick={onDownloadEml} title="Download message (.EML)">
           <svg class="ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -256,6 +324,19 @@
           </div>
 
           <div class="toolbar-right">
+            <button
+              type="button"
+              class="toolbar-btn"
+              class:active={forwardOpen}
+              onclick={handleToggleForwardBar}
+              title="Manual forward options"
+            >
+              <svg class="ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 10 20 15 15 20" />
+                <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+              </svg>
+              <span>{forwardOpen ? 'Forwarding' : 'Forward'}</span>
+            </button>
             <button type="button" class="toolbar-btn" onclick={handleCopyBody} title="Copy message body">
               <svg class="ui-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -265,6 +346,56 @@
             </button>
           </div>
         </div>
+
+        {#if forwardOpen}
+          <div class="forward-panel">
+            <div class="forward-panel-row">
+              <label for={`forward-target-${msg.id}`} class="forward-panel-label">To:</label>
+              <input
+                id={`forward-target-${msg.id}`}
+                type="email"
+                class="forward-target-input"
+                placeholder="recipient@example.com"
+                bind:value={forwardTarget}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleQuickForward();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                class="btn-forward-send"
+                onclick={() => handleQuickForward()}
+                title="Launch mail client with prefilled draft"
+              >
+                <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+                <span>Open Mail Draft</span>
+              </button>
+              <button
+                type="button"
+                class="btn-forward-copy"
+                onclick={handleCopyForwardText}
+                title="Copy formatted forwarded email body to clipboard"
+              >
+                Copy Draft
+              </button>
+              <button
+                type="button"
+                class="btn-forward-close"
+                onclick={() => (forwardOpen = false)}
+                title="Close forward bar"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        {/if}
 
         {#if viewMode === 'raw'}
           <div class="message-raw-box">{msg.body}</div>
@@ -521,6 +652,11 @@
     color: var(--red);
   }
 
+  .icon-btn.forward-icon:hover {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--signal-emerald);
+  }
+
   /* Full-width Message Reader Canvas */
   .message-card-body {
     padding: 12px 16px 16px;
@@ -635,6 +771,110 @@
   .toolbar-btn:hover {
     color: var(--text-primary);
     border-color: var(--border-hover);
+  }
+
+  .toolbar-btn.active {
+    background: #27272a;
+    border-color: #3f3f46;
+    color: #ffffff;
+  }
+
+  .forward-panel {
+    background: #18181b;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  }
+
+  .forward-panel-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .forward-panel-label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-family: var(--font-mono);
+  }
+
+  .forward-target-input {
+    flex: 1;
+    min-width: 200px;
+    height: 28px;
+    padding: 0 8px;
+    background: var(--bg-root);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    outline: none;
+    transition: border-color var(--transition);
+  }
+
+  .forward-target-input:focus {
+    border-color: var(--signal-emerald);
+  }
+
+  .btn-forward-send {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-xs);
+    background: var(--signal-emerald);
+    color: #000000;
+    font-size: 11.5px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: opacity var(--transition);
+  }
+
+  .btn-forward-send:hover {
+    opacity: 0.9;
+  }
+
+  .btn-forward-copy {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--radius-xs);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+
+  .btn-forward-copy:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+  }
+
+  .btn-forward-close {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .btn-forward-close:hover {
+    color: var(--text-primary);
   }
 
   .theme-dot {

@@ -7,6 +7,7 @@
     messages: Message[];
     activeInboxAddress: string;
     countdownSeconds: number;
+    forwardEmail?: string | null;
     onDeleteMessage: (id: string) => void;
     onDownloadEml: (msg: Message) => void;
     onShowToast: (text: string) => void;
@@ -16,6 +17,7 @@
     messages,
     activeInboxAddress,
     countdownSeconds,
+    forwardEmail = null,
     onDeleteMessage,
     onDownloadEml,
     onShowToast,
@@ -227,6 +229,7 @@
         <MessageCard
           {msg}
           isOpen={openMessageIds.includes(msg.id)}
+          {forwardEmail}
           onToggle={() => toggleOpen(msg.id)}
           onDelete={() => onDeleteMessage(msg.id)}
           onDownloadEml={() => onDownloadEml(msg)}

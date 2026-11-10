@@ -54,7 +54,17 @@ export function isHtmlContent(content: string): boolean {
 }
 
 export function stripHtml(html: string): string {
-  return (html || '').replace(/<[^>]*>/g, ' ');
+  return (html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"');
 }
 
 export function escapeHtml(str: string): string {
@@ -592,4 +602,34 @@ export function playNotificationChime(): void {
   } catch {
     // Audio context may be suspended or blocked by user gesture policy
   }
+}
+
+/**
+ * Formats a message into a standard RFC-style forwarded email text.
+ */
+export function formatForwardText(msg: Message): string {
+  const dateStr = formatTimestamp(msg.received_at);
+  const plainBody = isHtmlContent(msg.body)
+    ? stripHtml(msg.body).replace(/\s+/g, ' ').trim()
+    : (msg.body || '');
+
+  return [
+    '---------- Forwarded message ---------',
+    `From: ${msg.from_address}`,
+    `Date: ${dateStr}`,
+    `Subject: ${msg.subject || '(no subject)'}`,
+    `To: ${msg.inbox_address}`,
+    '',
+    plainBody,
+  ].join('\n');
+}
+
+/**
+ * Builds a mailto URI for manual email forwarding.
+ */
+export function buildForwardMailto(msg: Message, targetEmail = ''): string {
+  const subject = `Fwd: ${msg.subject || '(no subject)'}`;
+  const body = formatForwardText(msg);
+  const to = (targetEmail || '').trim();
+  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

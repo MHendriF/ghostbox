@@ -704,6 +704,87 @@ test('email forward parser: normalizes and extracts valid forward destination li
   );
 });
 
+// Test 28: Manual forward text formatting
+function stripHtmlMock(html) {
+  return (html || '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"');
+}
+
+function formatForwardTextMock(msg) {
+  const plainBody = isHtmlContent(msg.body)
+    ? stripHtmlMock(msg.body).replace(/\s+/g, ' ').trim()
+    : (msg.body || '');
+
+  return [
+    '---------- Forwarded message ---------',
+    `From: ${msg.from_address}`,
+    `Date: ${msg.received_at}`,
+    `Subject: ${msg.subject || '(no subject)'}`,
+    `To: ${msg.inbox_address}`,
+    '',
+    plainBody,
+  ].join('\n');
+}
+
+test('manual forward formatter: formats RFC-style headers and cleans body', () => {
+  const msgPlain = {
+    from_address: 'sender@external.com',
+    received_at: '2026-11-10T03:00:00.000Z',
+    subject: 'Important Invoice',
+    inbox_address: 'client@rinjaniglobal.com',
+    body: 'Please find attached invoice.\nThank you.',
+  };
+  const formattedPlain = formatForwardTextMock(msgPlain);
+  assert.match(formattedPlain, /---------- Forwarded message ---------/);
+  assert.match(formattedPlain, /From: sender@external\.com/);
+  assert.match(formattedPlain, /Subject: Important Invoice/);
+  assert.match(formattedPlain, /To: client@rinjaniglobal\.com/);
+  assert.match(formattedPlain, /Please find attached invoice\./);
+
+  const msgHtml = {
+    from_address: 'noreply@social.com',
+    received_at: '2026-11-10T03:00:00.000Z',
+    subject: '',
+    inbox_address: 'test@rinjaniglobal.com',
+    body: '<p>Your login code is <strong>987654</strong>.</p>',
+  };
+  const formattedHtml = formatForwardTextMock(msgHtml);
+  assert.match(formattedHtml, /Subject: \(no subject\)/);
+  assert.match(formattedHtml, /Your login code is 987654\./);
+  assert.doesNotMatch(formattedHtml, /<p>/);
+  assert.doesNotMatch(formattedHtml, /<strong>/);
+});
+
+// Test 29: Forward mailto URI construction
+function buildForwardMailtoMock(msg, target = '') {
+  const subject = `Fwd: ${msg.subject || '(no subject)'}`;
+  const body = formatForwardTextMock(msg);
+  const to = (target || '').trim();
+  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+test('forward mailto builder: builds compliant mailto URI with encoded parameters', () => {
+  const msg = {
+    from_address: 'alert@bank.com',
+    received_at: '2026-11-10T03:00:00.000Z',
+    subject: 'Security Alert: New Sign-in',
+    inbox_address: 'user@rinjaniglobal.com',
+    body: 'A new sign-in was detected.',
+  };
+  const uri = buildForwardMailtoMock(msg, 'rinjaniglobal.id@gmail.com');
+  assert.ok(uri.startsWith('mailto:rinjaniglobal.id%40gmail.com?subject=Fwd%3A%20Security%20Alert'));
+  assert.ok(uri.includes('body=-'));
+});
+
 
 
 

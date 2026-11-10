@@ -4,6 +4,7 @@
     mailDomain?: string;
     countdown?: number;
     authRequired?: boolean;
+    forwardEmail?: string | null;
     onLock?: () => void;
   }
 
@@ -12,6 +13,7 @@
     mailDomain = '',
     countdown = 15,
     authRequired = false,
+    forwardEmail = null,
     onLock,
   }: Props = $props();
 </script>
@@ -40,6 +42,16 @@
       <span class="status-label">Live</span>
       <span class="status-countdown">{countdown}s</span>
     </div>
+    {#if forwardEmail}
+      <div class="forward-chip" title="Global forwarding active: Inbound messages are routed to {forwardEmail}">
+        <svg class="ui-icon-xs forward-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 10 20 15 15 20" />
+          <path d="M4 4v7a4 4 0 0 0 4 4h12" />
+        </svg>
+        <span class="forward-label">Fwd:</span>
+        <span class="forward-email">{forwardEmail}</span>
+      </div>
+    {/if}
   </div>
 
   <div class="topbar-right">
@@ -122,6 +134,38 @@
   .topbar-center {
     display: flex;
     align-items: center;
+    gap: 8px;
+  }
+
+  .forward-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--green-soft);
+    font-weight: 500;
+    max-width: 260px;
+  }
+
+  .forward-label {
+    font-weight: 600;
+    opacity: 0.85;
+  }
+
+  .forward-email {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .forward-svg {
+    flex-shrink: 0;
   }
 
   .status-chip {
