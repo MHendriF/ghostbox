@@ -449,50 +449,86 @@ export function getSenderDetails(from_address = ''): SenderDetails {
   return { displayName, email, domain };
 }
 
+const COMMON_OTP_WORDS = new Set([
+  'will', 'your', 'with', 'from', 'this', 'that', 'into', 'have',
+  'only', 'once', 'must', 'does', 'just', 'more', 'than', 'also',
+  'over', 'sent', 'been', 'here', 'when', 'then', 'code', 'team',
+  'help', 'user', 'view', 'open', 'link', 'mail', 'free', 'date',
+  'name', 'send', 'text', 'card', 'post', 'time', 'year', 'days',
+]);
+
 export function extractOtp(subject = '', body = ''): string | null {
-  // Check subject first for explicit code
-  const subjectText = (subject || '').trim();
-  const subCodeMatch = subjectText.match(/\b(\d{4,8})\b/);
-  if (subCodeMatch && /(?:code|otp|pin|kode|verifikasi|verification|confirmation)/i.test(subjectText)) {
-    return subCodeMatch[1];
+  const cleanSubj = (subject || '').trim();
+  const cleanBody = isHtmlContent(body) ? stripHtml(body) : (body || '');
+  const combined = `${cleanSubj} ${cleanBody}`.replace(/\s+/g, ' ');
+
+  // 1. Google Verification format: G-123456
+  const googleMatch = combined.match(/\bG-(\d{6})\b/i);
+  if (googleMatch) {
+    return googleMatch[1];
   }
 
-  const rawClean = `${subject} ${stripHtml(body)}`.replace(/\s+/g, ' ');
+  // 2. Subject explicit check: only if subject has clear verification intent
+  const subjHasAuthIntent =
+    /(?:otp|code|pin|kode|verifik|confirm|konfirm|login|masuk|2fa|mfa|security)/i.test(cleanSubj);
+  if (subjHasAuthIntent) {
+    const subjLeadingCode = cleanSubj.match(/\b(\d{4,8})\b/);
+    if (subjLeadingCode) {
+      return subjLeadingCode[1];
+    }
+  }
 
-  // 1. Match labeled code/otp/token/pin/password (alphanumeric 4-8 chars)
-  const labeledRegex = /(?:code|otp|verification|pin|kode|verifikasi|token|password|sandi)[\s:=#\-]+([a-z0-9]{4,8})\b/i;
-  const matchLabeled = rawClean.match(labeledRegex);
+  // 3. Strict Labeled Code pattern (e.g. "OTP: AFS5HU", "verification code: 962180", "Kode Verifikasi: 123456")
+  const labeledRegex =
+    /(?:verification\s+code|confirmation\s+code|security\s+code|login\s+code|auth(?:entication)?\s+code|one-time\s+(?:password|passcode|code)|kode\s+(?:verifikasi|keamanan|konfirmasi|masuk|otp)|otp|pin|passcode)[\s:=#\-]+([a-z0-9]{4,8})\b/i;
+  const matchLabeled = combined.match(labeledRegex);
   if (matchLabeled && matchLabeled[1]) {
     const candidate = matchLabeled[1].trim();
     const isPureAlpha = /^[a-zA-Z]+$/.test(candidate);
-    const commonWords = new Set([
-      'will', 'your', 'with', 'from', 'this', 'that', 'into', 'have',
-      'only', 'once', 'must', 'does', 'just', 'more', 'than', 'also',
-      'over', 'sent', 'been', 'here', 'when', 'then'
-    ]);
-    if (!isPureAlpha || !commonWords.has(candidate.toLowerCase())) {
+    if (!isPureAlpha || !COMMON_OTP_WORDS.has(candidate.toLowerCase())) {
       if (/\d/.test(candidate) || candidate === candidate.toUpperCase()) {
         return candidate;
       }
     }
   }
 
-  // 2. Match standalone 6-8 digit numeric code
-  const standalone6to8 = /\b(\d{6,8})\b/;
-  const match6to8 = rawClean.match(standalone6to8);
-  if (match6to8 && match6to8[1]) {
-    return match6to8[1];
+  // 4. Inverted pattern: "123456 is your verification / confirmation / login code"
+  const invertedRegex =
+    /\b([a-z0-9]{4,8})\b\s+(?:is\s+your|adalah\s+kode)\s+(?:[a-z0-9\s-]{0,25})?(?:verification|confirmation|login|security|otp|code|kode|verifikasi)/i;
+  const matchInverted = combined.match(invertedRegex);
+  if (matchInverted && matchInverted[1]) {
+    const candidate = matchInverted[1].trim();
+    if (!COMMON_OTP_WORDS.has(candidate.toLowerCase())) {
+      if (/\d/.test(candidate) || candidate === candidate.toUpperCase()) {
+        return candidate;
+      }
+    }
   }
 
-  // 3. Match standalone 4-5 digit numeric code (filtering out common years 1970-2099)
-  const standalone4to5 = /\b(\d{4,5})\b/g;
-  let match4to5: RegExpExecArray | null;
-  while ((match4to5 = standalone4to5.exec(rawClean)) !== null) {
-    const val = parseInt(match4to5[1], 10);
-    if (val >= 1970 && val <= 2099) {
-      continue;
+  // 5. Contextual Proximity Check:
+  // ONLY look for standalone codes if the email actually has explicit auth intent
+  const bodyHasAuthIntent =
+    /(?:verification\s+code|confirmation\s+code|one-time\s+password|kode\s+verifikasi|enter\s+the\s+following\s+code|use\s+this\s+code|security\s+code)/i.test(
+      combined
+    );
+  if (subjHasAuthIntent || bodyHasAuthIntent) {
+    const proximityRegex = /(?:code|kode|otp|verification|verifikasi|pin)[\s\S]{1,60}?\b(\d{4,8})\b/gi;
+    let proxMatch: RegExpExecArray | null;
+    while ((proxMatch = proximityRegex.exec(combined)) !== null) {
+      const code = proxMatch[1];
+      const val = parseInt(code, 10);
+      if (val >= 1970 && val <= 2099) continue;
+
+      const matchedSnippet = proxMatch[0];
+      if (
+        /(?:total|price|order|invoice|phone|tel|rp|idr|\$|€|usd|users|port)\s*[:#]?\s*\d/i.test(
+          matchedSnippet
+        )
+      ) {
+        continue;
+      }
+      return code;
     }
-    return match4to5[1];
   }
 
   return null;

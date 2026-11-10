@@ -392,7 +392,7 @@ test('uuid validation: accepts valid UUID v4 and rejects arbitrary or malicious 
 });
 
 // Test 14: Telegram forum topic message_thread_id support
-import { buildTelegramPayload } from '../src/utils/telegram.ts';
+import { buildTelegramPayload, extractOtp as extractOtpTelegram } from '../src/utils/telegram.ts';
 
 test('telegram forum topic: builds payload with message_thread_id when topic ID is provided', () => {
   // Without thread ID
@@ -521,9 +521,29 @@ test('otp extraction: accurately identifies alphanumeric and numeric codes while
   const chiaText = 'To continue the signup process, please enter the following verification code:\n\n962180\n\nThis code is valid for 10 minutes.';
   assert.equal(extractOtpFrontend('Chia Cloud Wallet email verification', chiaText), '962180');
 
+  // Sample 4: Google G-code
+  assert.equal(extractOtpFrontend('Google Verification Code', 'G-748920 is your Google verification code.'), '748920');
+
+  // Sample 5: GitHub device verification
+  assert.equal(
+    extractOtpFrontend('[GitHub] Please verify your device', 'Verification code: 829103. If you did not request this...'),
+    '829103'
+  );
+
+  // Sample 6: Inverted pattern
+  assert.equal(extractOtpFrontend('Confirm your account', '448811 is your verification code.'), '448811');
+
   // Negative case: common english words after "code" must NOT be extracted
   const falsePositive = 'Your verification code will be sent shortly to your phone.';
   assert.equal(extractOtpFrontend('Notification', falsePositive), null);
+
+  // Negative case: non-auth numbers must NOT be extracted as OTP (false positive prevention)
+  assert.equal(extractOtpFrontend('Invoice #101', 'Total amount due: 50000 IDR. Please pay by tomorrow.'), null);
+  assert.equal(extractOtpFrontend('Order shipped', 'Your package is on its way. Tracking number 87654321.'), null);
+  assert.equal(extractOtpFrontend('Delivery address', 'Ship to Jl. Merdeka No 10, Postal Code 40132, Bandung.'), null);
+  assert.equal(extractOtpFrontend('Community Update', 'We have welcomed over 25000 new developers this month!'), null);
+  assert.equal(extractOtpFrontend('Deployment notice', 'App is running on port 8080 or port 3000.'), null);
+  assert.equal(extractOtpFrontend('Bank Statement', 'Account 12345678 balance summary.'), null);
 });
 
 // Test 20: Action link extraction
@@ -783,6 +803,17 @@ test('forward mailto builder: builds compliant mailto URI with encoded parameter
   const uri = buildForwardMailtoMock(msg, 'rinjaniglobal.id@gmail.com');
   assert.ok(uri.startsWith('mailto:rinjaniglobal.id%40gmail.com?subject=Fwd%3A%20Security%20Alert'));
   assert.ok(uri.includes('body=-'));
+});
+
+// Test 30: Telegram backend OTP extraction parity and false positive rejection
+test('telegram otp extraction: matches frontend accuracy and rejects false positives', () => {
+  assert.equal(extractOtpTelegram('Google Verification Code', 'G-748920 is your Google verification code.'), '748920');
+  assert.equal(extractOtpTelegram('570886 is your Instagram confirmation code', 'Enter 570886 to verify'), '570886');
+  assert.equal(extractOtpTelegram('Log in to Zomato', 'Log in manually by entering the following OTP AFS5HU'), 'AFS5HU');
+  assert.equal(extractOtpTelegram('Invoice #101', 'Total amount due: 50000 IDR. Please pay by tomorrow.'), null);
+  assert.equal(extractOtpTelegram('Order shipped', 'Your package is on its way. Tracking number 87654321.'), null);
+  assert.equal(extractOtpTelegram('Delivery address', 'Ship to Jl. Merdeka No 10, Postal Code 40132, Bandung.'), null);
+  assert.equal(extractOtpTelegram('Bank Statement', 'Account 12345678 balance summary.'), null);
 });
 
 
