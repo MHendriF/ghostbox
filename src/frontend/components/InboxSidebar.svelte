@@ -448,6 +448,12 @@
         Are you sure you want to permanently delete <span class="delete-address-badge">{emptyCount} empty inboxes</span>? Inboxes with zero messages will be removed immediately.
       </p>
 
+      {#if isCleaning}
+        <div class="modal-progress-bar">
+          <div class="progress-fill indeterminate"></div>
+        </div>
+      {/if}
+
       <div class="delete-modal-actions">
         <button
           type="button"
@@ -464,6 +470,16 @@
           disabled={isCleaning}
         >
           {#if isCleaning}
+            <svg class="ui-icon-xs is-spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="2" x2="12" y2="6" />
+              <line x1="12" y1="18" x2="12" y2="22" />
+              <line x1="4.93" y1="4.93" x2="7.76" y2="7.76" />
+              <line x1="16.24" y1="16.24" x2="19.07" y2="19.07" />
+              <line x1="2" y1="12" x2="6" y2="12" />
+              <line x1="18" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="19.07" x2="7.76" y2="16.24" />
+              <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
+            </svg>
             <span>Cleaning...</span>
           {:else}
             <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -509,6 +525,12 @@
         Are you sure you want to permanently delete <span class="delete-address-badge">{selectedCount} selected inboxes</span> and all their messages? This action cannot be undone.
       </p>
 
+      {#if isBatchDeleting}
+        <div class="modal-progress-bar">
+          <div class="progress-fill indeterminate"></div>
+        </div>
+      {/if}
+
       <div class="delete-modal-actions">
         <button
           type="button"
@@ -525,6 +547,16 @@
           disabled={isBatchDeleting}
         >
           {#if isBatchDeleting}
+            <svg class="ui-icon-xs is-spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="2" x2="12" y2="6" />
+              <line x1="12" y1="18" x2="12" y2="22" />
+              <line x1="4.93" y1="4.93" x2="7.76" y2="7.76" />
+              <line x1="16.24" y1="16.24" x2="19.07" y2="19.07" />
+              <line x1="2" y1="12" x2="6" y2="12" />
+              <line x1="18" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="19.07" x2="7.76" y2="16.24" />
+              <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
+            </svg>
             <span>Deleting...</span>
           {:else}
             <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1059,6 +1091,42 @@
 
   .confirm-modal-btn:hover:not(:disabled) {
     background: #dc2626;
+  }
+
+  .confirm-modal-btn:disabled,
+  .cancel-modal-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .modal-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(239, 68, 68, 0.15);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    position: relative;
+  }
+
+  .progress-fill.indeterminate {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 45%;
+    background: linear-gradient(90deg, transparent, var(--red), transparent);
+    animation: indeterminateProgress 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    border-radius: 999px;
+  }
+
+  @keyframes indeterminateProgress {
+    0% {
+      left: -45%;
+    }
+    100% {
+      left: 100%;
+    }
   }
 
   @media (max-width: 860px) {

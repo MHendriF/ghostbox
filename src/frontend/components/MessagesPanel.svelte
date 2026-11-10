@@ -8,7 +8,7 @@
     activeInboxAddress: string;
     countdownSeconds: number;
     forwardEmail?: string | null;
-    onDeleteMessage: (id: string) => void;
+    onDeleteMessage: (id: string) => void | Promise<void>;
     onDownloadEml: (msg: Message) => void;
     onShowToast: (text: string) => void;
   }

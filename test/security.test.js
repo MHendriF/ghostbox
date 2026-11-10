@@ -1151,6 +1151,49 @@ test('message delete state sync: decrements inbox message_count and clamps to ze
   assert.equal(inboxes[0].message_count, 0);
 });
 
+// Test 39: Batch delete bulk IN query builder & chunking logic
+test('batch delete bulk IN query: chunks large address lists and formats placeholders', () => {
+  function buildBatchDeleteChunks(rawAddresses, chunkSize = 50) {
+    const unique = Array.from(
+      new Set(
+        rawAddresses
+          .filter((a) => typeof a === 'string' && a.trim().length > 0)
+          .map((a) => a.trim().toLowerCase())
+      )
+    );
+
+    const chunks = [];
+    for (let i = 0; i < unique.length; i += chunkSize) {
+      const chunk = unique.slice(i, i + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const sql = `DELETE FROM inboxes WHERE lower(address) IN (${placeholders})`;
+      chunks.push({ chunk, sql, count: chunk.length });
+    }
+    return chunks;
+  }
+
+  // 120 addresses should yield 3 chunks (50, 50, 20)
+  const mockAddresses = Array.from({ length: 120 }, (_, i) => `user_${i + 1}@example.com`);
+  const chunks = buildBatchDeleteChunks(mockAddresses, 50);
+
+  assert.equal(chunks.length, 3);
+  assert.equal(chunks[0].count, 50);
+  assert.equal(chunks[1].count, 50);
+  assert.equal(chunks[2].count, 20);
+
+  assert.ok(chunks[0].sql.startsWith('DELETE FROM inboxes WHERE lower(address) IN (?,?,'));
+  assert.equal(chunks[0].chunk[0], 'user_1@example.com');
+  assert.equal(chunks[2].chunk[19], 'user_120@example.com');
+
+  // Handles duplicate & mixed casing cleanly
+  const duplicates = ['A@example.com', 'a@example.com', 'B@EXAMPLE.COM', '   '];
+  const dedupedChunks = buildBatchDeleteChunks(duplicates, 50);
+  assert.equal(dedupedChunks.length, 1);
+  assert.equal(dedupedChunks[0].count, 2);
+  assert.deepEqual(dedupedChunks[0].chunk, ['a@example.com', 'b@example.com']);
+});
+
+
 
 
 

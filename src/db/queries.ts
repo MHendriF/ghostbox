@@ -156,38 +156,63 @@ export async function getSessionInboxes(db: D1Database, sessionId: string): Prom
 export async function deleteInbox(
   db: D1Database,
   address: string,
-  sessionId?: string
+  _sessionId?: string
 ): Promise<void> {
   const normalized = (address || '').trim().toLowerCase();
-  if (sessionId) {
-    await unlinkInboxFromSession(db, sessionId, normalized).catch(() => {});
-  }
-  await db.prepare('DELETE FROM messages WHERE lower(inbox_address) = lower(?)').bind(normalized).run();
-  await db.prepare('DELETE FROM inboxes WHERE lower(address) = lower(?)').bind(normalized).run();
+  await db
+    .prepare('DELETE FROM messages WHERE lower(inbox_address) = lower(?)')
+    .bind(normalized)
+    .run()
+    .catch(() => {});
+  await db
+    .prepare('DELETE FROM session_inboxes WHERE lower(inbox_address) = lower(?)')
+    .bind(normalized)
+    .run()
+    .catch(() => {});
+  await db
+    .prepare('DELETE FROM inboxes WHERE lower(address) = lower(?)')
+    .bind(normalized)
+    .run();
 }
 
 export async function deleteInboxesBatch(
   db: D1Database,
   addresses: string[],
-  sessionId?: string
+  _sessionId?: string
 ): Promise<number> {
   const uniqueAddresses = Array.from(
     new Set(addresses.map((a) => (a || '').trim().toLowerCase()).filter(Boolean))
   );
   if (uniqueAddresses.length === 0) return 0;
 
-  const statements: D1PreparedStatement[] = [];
-  for (const addr of uniqueAddresses) {
-    if (sessionId) {
-      statements.push(
-        db.prepare('DELETE FROM session_inboxes WHERE session_id = ? AND inbox_address = ?').bind(sessionId, addr)
-      );
-    }
-    statements.push(db.prepare('DELETE FROM messages WHERE inbox_address = ?').bind(addr));
-    statements.push(db.prepare('DELETE FROM inboxes WHERE address = ?').bind(addr));
+  const CHUNK_SIZE = 50;
+  for (let i = 0; i < uniqueAddresses.length; i += CHUNK_SIZE) {
+    const chunk = uniqueAddresses.slice(i, i + CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+
+    // 1. Delete associated messages
+    await db
+      .prepare(`DELETE FROM messages WHERE lower(inbox_address) IN (${placeholders})`)
+      .bind(...chunk)
+      .run()
+      .catch((err) => {
+        console.warn('Batch delete messages warning:', err);
+      });
+
+    // 2. Unlink any session references (safe against missing table or foreign key violation)
+    await db
+      .prepare(`DELETE FROM session_inboxes WHERE lower(inbox_address) IN (${placeholders})`)
+      .bind(...chunk)
+      .run()
+      .catch(() => {});
+
+    // 3. Delete inboxes
+    await db
+      .prepare(`DELETE FROM inboxes WHERE lower(address) IN (${placeholders})`)
+      .bind(...chunk)
+      .run();
   }
 
-  await db.batch(statements);
   return uniqueAddresses.length;
 }
 

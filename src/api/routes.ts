@@ -289,22 +289,27 @@ api.post('/inboxes/clean-empty', async (c) => {
 
 // ---- POST /api/inboxes/batch-delete ----
 api.post('/inboxes/batch-delete', async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  if (!body || !Array.isArray(body.addresses)) {
-    return c.json({ error: 'Invalid request: "addresses" array is required' }, 400);
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    if (!body || !Array.isArray(body.addresses)) {
+      return c.json({ error: 'Invalid request: "addresses" array is required' }, 400);
+    }
+
+    const addresses = body.addresses
+      .filter((a: unknown): a is string => typeof a === 'string' && a.trim().length > 0)
+      .slice(0, 100);
+
+    if (addresses.length === 0) {
+      return c.json({ ok: true, count: 0 });
+    }
+
+    const sid = c.get('sessionId');
+    const count = await deleteInboxesBatch(c.env.DB, addresses, sid);
+    return c.json({ ok: true, count });
+  } catch (err: any) {
+    console.error('Batch delete error:', err);
+    return c.json({ error: err?.message || 'Failed to delete inboxes batch' }, 500);
   }
-
-  const addresses = body.addresses
-    .filter((a: unknown): a is string => typeof a === 'string' && a.trim().length > 0)
-    .slice(0, 100);
-
-  if (addresses.length === 0) {
-    return c.json({ ok: true, count: 0 });
-  }
-
-  const sid = c.get('sessionId');
-  const count = await deleteInboxesBatch(c.env.DB, addresses, sid);
-  return c.json({ ok: true, count });
 });
 
 // ---- DELETE /api/inboxes/:address ----

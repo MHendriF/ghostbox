@@ -9,7 +9,7 @@
     onQuickRandom?: () => void;
     onToggleDrawer?: () => void;
     onRefresh: () => void;
-    onDeleteInbox: () => void;
+    onDeleteInbox: () => void | Promise<void>;
     onShowToast: (msg: string) => void;
   }
 
@@ -27,6 +27,7 @@
 
   let copied = $state(false);
   let showDeleteModal = $state(false);
+  let isDeleting = $state(false);
   let spinning = $state(false);
 
   async function handleCopy() {
@@ -57,23 +58,30 @@
   }
 
   function closeDeleteModal() {
+    if (isDeleting) return;
     showDeleteModal = false;
   }
 
-  function confirmDelete() {
-    showDeleteModal = false;
-    onDeleteInbox();
+  async function confirmDelete() {
+    if (isDeleting) return;
+    isDeleting = true;
+    try {
+      await onDeleteInbox();
+      showDeleteModal = false;
+    } finally {
+      isDeleting = false;
+    }
   }
 
   function handleModalKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !isDeleting) {
       closeDeleteModal();
     }
   }
 
   $effect(() => {
     // Close delete modal if active address changes
-    if (activeAddress) {
+    if (activeAddress && !isDeleting) {
       showDeleteModal = false;
     }
   });
@@ -209,16 +217,46 @@
         Are you sure you want to permanently delete <span class="delete-address-badge">{activeAddress}</span>? All received messages in this inbox will be erased immediately.
       </p>
 
+      {#if isDeleting}
+        <div class="modal-progress-bar">
+          <div class="progress-fill indeterminate"></div>
+        </div>
+      {/if}
+
       <div class="delete-modal-actions">
-        <button type="button" class="btn btn-secondary cancel-modal-btn" onclick={closeDeleteModal}>
+        <button
+          type="button"
+          class="btn btn-secondary cancel-modal-btn"
+          onclick={closeDeleteModal}
+          disabled={isDeleting}
+        >
           Cancel
         </button>
-        <button type="button" class="btn btn-danger-solid confirm-modal-btn" onclick={confirmDelete}>
-          <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-          <span>Delete Permanently</span>
+        <button
+          type="button"
+          class="btn btn-danger-solid confirm-modal-btn"
+          onclick={confirmDelete}
+          disabled={isDeleting}
+        >
+          {#if isDeleting}
+            <svg class="ui-icon-xs is-spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="2" x2="12" y2="6" />
+              <line x1="12" y1="18" x2="12" y2="22" />
+              <line x1="4.93" y1="4.93" x2="7.76" y2="7.76" />
+              <line x1="16.24" y1="16.24" x2="19.07" y2="19.07" />
+              <line x1="2" y1="12" x2="6" y2="12" />
+              <line x1="18" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="19.07" x2="7.76" y2="16.24" />
+              <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" />
+            </svg>
+            <span>Deleting...</span>
+          {:else}
+            <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            <span>Delete Permanently</span>
+          {/if}
         </button>
       </div>
     </div>
@@ -473,8 +511,44 @@
     font-weight: 600;
   }
 
-  .confirm-modal-btn:hover {
+  .confirm-modal-btn:hover:not(:disabled) {
     background: #dc2626;
+  }
+
+  .confirm-modal-btn:disabled,
+  .cancel-modal-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .modal-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(239, 68, 68, 0.15);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    position: relative;
+  }
+
+  .progress-fill.indeterminate {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 45%;
+    background: linear-gradient(90deg, transparent, var(--red), transparent);
+    animation: indeterminateProgress 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    border-radius: 999px;
+  }
+
+  @keyframes indeterminateProgress {
+    0% {
+      left: -45%;
+    }
+    100% {
+      left: 100%;
+    }
   }
 
   @media (max-width: 640px) {
