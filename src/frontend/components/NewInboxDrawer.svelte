@@ -44,95 +44,170 @@
 </script>
 
 {#if open}
-  <section class="new-box">
-    <div class="new-box-inner">
-      <input
-        type="text"
-        bind:value={localPart}
-        placeholder={`username or leave empty for random @${selectedDomain || mailDomain || 'domain'}`}
-        autocomplete="off"
-        disabled={submitting}
-        onkeydown={(e) => e.key === 'Enter' && handleCreate()}
-      />
-      {#if mailDomains.length > 1}
-        <select bind:value={selectedDomain} disabled={submitting} aria-label="Select domain">
-          {#each mailDomains as d (d)}
-            <option value={d}>@{d}</option>
-          {/each}
-        </select>
-      {/if}
-      <button class="btn btn-primary" onclick={handleCreate} disabled={submitting}>
-        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <div class="drawer-box">
+    <div class="drawer-header">
+      <div class="drawer-title-wrap">
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19" />
           <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
-        <span>{submitting ? 'Creating...' : 'Create'}</span>
-      </button>
-      <button class="btn btn-secondary" onclick={onCancel} disabled={submitting}>
-        <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18" />
-          <line x1="6" y1="6" x2="18" y2="18" />
-        </svg>
-        <span>Cancel</span>
-      </button>
+        <span>Create Custom Inbox</span>
+      </div>
+      <button type="button" class="close-icon-btn" onclick={onCancel} title="Close drawer">✕</button>
     </div>
-  </section>
+
+    <div class="drawer-inner">
+      <div class="input-wrap">
+        <input
+          type="text"
+          bind:value={localPart}
+          placeholder="username (leave empty for random)"
+          autocomplete="off"
+          disabled={submitting}
+          onkeydown={(e) => e.key === 'Enter' && handleCreate()}
+        />
+        <span class="at-separator">@</span>
+        {#if mailDomains.length > 1}
+          <select bind:value={selectedDomain} disabled={submitting} aria-label="Select domain">
+            {#each mailDomains as d (d)}
+              <option value={d}>{d}</option>
+            {/each}
+          </select>
+        {:else}
+          <span class="single-domain">{selectedDomain || mailDomain || 'domain'}</span>
+        {/if}
+      </div>
+
+      <div class="drawer-actions">
+        <button type="button" class="btn btn-primary" onclick={handleCreate} disabled={submitting}>
+          <span>{submitting ? 'Creating...' : 'Create Inbox'}</span>
+        </button>
+        <button type="button" class="btn btn-secondary" onclick={onCancel} disabled={submitting}>
+          <span>Cancel</span>
+        </button>
+      </div>
+    </div>
+  </div>
 {/if}
 
 <style>
-  .new-box {
+  .drawer-box {
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 16px 20px;
-    margin-bottom: 24px;
-    animation: slideDown 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    animation: slideIn 140ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-8px); }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-4px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
-  .new-box-inner {
+  .drawer-header {
     display: flex;
-    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .drawer-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+
+  .close-icon-btn {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+  }
+
+  .close-icon-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .drawer-inner {
+    display: flex;
+    gap: 8px;
     align-items: center;
     flex-wrap: wrap;
   }
 
-  input {
+  .input-wrap {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
     flex: 1;
-    min-width: 220px;
-    padding: 10px 14px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: inherit;
-    transition: border-color var(--transition);
+    min-width: 240px;
+    padding: 2px 8px;
   }
 
-  input:focus {
+  .input-wrap input {
+    flex: 1;
+    min-width: 140px;
+    padding: 6px 4px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
+
+  .input-wrap input:focus {
     outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
   }
 
-  select {
-    padding: 10px 30px 10px 14px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 13px;
-    font-family: inherit;
+  .at-separator {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 0 4px;
+  }
+
+  .single-domain {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    padding-right: 6px;
+  }
+
+  .input-wrap select {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    padding: 6px 12px 6px 4px;
     cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-    background-position: right 10px center;
-    background-repeat: no-repeat;
-    background-size: 16px;
+  }
+
+  .drawer-actions {
+    display: inline-flex;
+    gap: 6px;
+  }
+
+  @media (max-width: 640px) {
+    .drawer-inner {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .drawer-actions {
+      display: flex;
+    }
+
+    .drawer-actions .btn {
+      flex: 1;
+    }
   }
 </style>

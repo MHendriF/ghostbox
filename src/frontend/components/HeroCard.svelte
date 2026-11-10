@@ -1,1170 +1,381 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
   import type { Inbox } from '../types';
-  import { parseDate } from '../utils';
 
   interface Props {
-    inboxes: Inbox[];
+    inboxes?: Inbox[];
     activeAddress: string;
-    authRequired: boolean;
-    onSelectInbox: (addr: string) => void;
-    onQuickRandom: () => void;
-    onToggleDrawer: () => void;
+    isRefreshing?: boolean;
+    onSelectInbox?: (addr: string) => void;
+    onQuickRandom?: () => void;
+    onToggleDrawer?: () => void;
     onRefresh: () => void;
     onDeleteInbox: () => void;
-    onLock: () => void;
     onShowToast: (msg: string) => void;
-    onCleanEmptyInboxes?: () => void | Promise<void>;
-    totalInboxesCount?: number | null;
-    emptyInboxesCount?: number | null;
   }
 
   let {
-    inboxes,
+    inboxes = [],
     activeAddress,
-    authRequired,
+    isRefreshing = false,
     onSelectInbox,
     onQuickRandom,
     onToggleDrawer,
     onRefresh,
     onDeleteInbox,
-    onLock,
     onShowToast,
-    onCleanEmptyInboxes,
-    totalInboxesCount = null,
-    emptyInboxesCount = null,
   }: Props = $props();
 
   let copied = $state(false);
-  let isSelectOpen = $state(false);
-  let searchQuery = $state('');
-  let searchInputEl: HTMLInputElement | null = $state(null);
-  let comboboxWrapper: HTMLDivElement | null = $state(null);
-
-  let confirmingClean = $state(false);
-  let isCleaning = $state(false);
-  let confirmTimeout: number | null = null;
-
-  let displayTotal = $derived(
-    totalInboxesCount !== null && totalInboxesCount !== undefined
-      ? totalInboxesCount
-      : inboxes.length
-  );
-
-  let emptyCount = $derived(
-    emptyInboxesCount !== null && emptyInboxesCount !== undefined
-      ? emptyInboxesCount
-      : inboxes.filter((inb) => (inb.message_count ?? 0) === 0).length
-  );
-
-  let inboxSort = $state<'date-desc' | 'date-asc' | 'msgs-desc' | 'msgs-asc'>('date-desc');
-  let inboxCategory = $state<'all' | 'active' | 'empty'>('all');
-
-  let filteredInboxes = $derived.by(() => {
-    let list = inboxes;
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter((inb) => inb.address.toLowerCase().includes(q));
-    }
-
-    if (inboxCategory === 'active') {
-      list = list.filter((inb) => (inb.message_count ?? 0) > 0);
-    } else if (inboxCategory === 'empty') {
-      list = list.filter((inb) => (inb.message_count ?? 0) === 0);
-    }
-
-    return [...list].sort((a, b) => {
-      if (inboxSort === 'msgs-desc') {
-        const diff = (b.message_count ?? 0) - (a.message_count ?? 0);
-        if (diff !== 0) return diff;
-        return parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime();
-      }
-      if (inboxSort === 'msgs-asc') {
-        const diff = (a.message_count ?? 0) - (b.message_count ?? 0);
-        if (diff !== 0) return diff;
-        return parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime();
-      }
-      if (inboxSort === 'date-asc') {
-        return parseDate(a.created_at).getTime() - parseDate(b.created_at).getTime();
-      }
-      return parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime();
-    });
-  });
-
-  function toggleDropdown() {
-    isSelectOpen = !isSelectOpen;
-    if (isSelectOpen) {
-      searchQuery = '';
-      setTimeout(() => {
-        searchInputEl?.focus();
-      }, 50);
-    }
-  }
-
-  function handleSelect(address: string) {
-    onSelectInbox(address);
-    isSelectOpen = false;
-    searchQuery = '';
-  }
-
-  function handleClickOutside(e: MouseEvent) {
-    if (isSelectOpen && comboboxWrapper && !comboboxWrapper.contains(e.target as Node)) {
-      isSelectOpen = false;
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
-      if (isSelectOpen) {
-        isSelectOpen = false;
-      }
-      if (confirmingClean) {
-        confirmingClean = false;
-      }
-    }
-  }
-
-  async function triggerCleanEmpty(e: MouseEvent) {
-    e.stopPropagation();
-    if (emptyCount === 0 || isCleaning) return;
-
-    if (!confirmingClean) {
-      confirmingClean = true;
-      if (confirmTimeout) clearTimeout(confirmTimeout);
-      confirmTimeout = window.setTimeout(() => {
-        confirmingClean = false;
-      }, 3500);
-      return;
-    }
-
-    if (confirmTimeout) clearTimeout(confirmTimeout);
-    confirmingClean = false;
-    if (!onCleanEmptyInboxes) return;
-
-    isCleaning = true;
-    try {
-      await onCleanEmptyInboxes();
-    } finally {
-      isCleaning = false;
-    }
-  }
-
-  function cancelConfirmClean(e: MouseEvent) {
-    e.stopPropagation();
-    if (confirmTimeout) clearTimeout(confirmTimeout);
-    confirmingClean = false;
-  }
-
-  onMount(() => {
-    document.addEventListener('click', handleClickOutside);
-    document.addEventListener('keydown', handleKeydown);
-  });
-
-  onDestroy(() => {
-    if (confirmTimeout) clearTimeout(confirmTimeout);
-    document.removeEventListener('click', handleClickOutside);
-    document.removeEventListener('keydown', handleKeydown);
-  });
+  let confirmingDelete = $state(false);
+  let deleteTimeout: number | null = null;
+  let spinning = $state(false);
 
   async function handleCopy() {
     if (!activeAddress) return;
     try {
       await navigator.clipboard.writeText(activeAddress);
       copied = true;
-      onShowToast('Email address copied to clipboard');
+      onShowToast('Address copied to clipboard');
       setTimeout(() => {
         copied = false;
-      }, 1800);
+      }, 1600);
     } catch {
-      onShowToast('Failed to copy to clipboard');
+      onShowToast('Failed to copy address');
     }
   }
+
+  function handleRefreshClick() {
+    spinning = true;
+    onShowToast('Refreshing inbox...');
+    onRefresh();
+    setTimeout(() => {
+      spinning = false;
+    }, 800);
+  }
+
+  function triggerDelete() {
+    if (!confirmingDelete) {
+      confirmingDelete = true;
+      if (deleteTimeout) clearTimeout(deleteTimeout);
+      deleteTimeout = window.setTimeout(() => {
+        confirmingDelete = false;
+      }, 4000);
+      return;
+    }
+    if (deleteTimeout) clearTimeout(deleteTimeout);
+    confirmingDelete = false;
+    onDeleteInbox();
+  }
+
+  function cancelDelete() {
+    if (deleteTimeout) clearTimeout(deleteTimeout);
+    confirmingDelete = false;
+  }
+
+  $effect(() => {
+    // Reset confirming delete if active address changes
+    if (activeAddress) {
+      confirmingDelete = false;
+    }
+  });
 </script>
 
-<section class="hero-card">
-  <div class="hero-top">
-    <div class="hero-top-left">
-      <div class="hero-badge">
-        <span class="live-dot"></span>
-        <span>Live Polling</span>
-      </div>
-      {#if authRequired}
-        <button class="lock-btn" onclick={onLock} title="Lock session / Logout">
-          <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-          <span>Lock</span>
-        </button>
+<div class="command-bar">
+  <div class="address-section">
+    <div class="address-meta-row">
+      <span class="section-label">Active Inbox</span>
+      {#if inboxes.length > 1 && onSelectInbox}
+        <div class="quick-switch-wrap">
+          <label for="quickInboxSelect" class="switch-label">Switch:</label>
+          <select
+            id="quickInboxSelect"
+            class="quick-switch-select"
+            value={activeAddress}
+            onchange={(e) => onSelectInbox?.((e.target as HTMLSelectElement).value)}
+            aria-label="Quick switch active inbox"
+          >
+            {#each inboxes as inb (inb.address)}
+              <option value={inb.address}>
+                {inb.address} ({inb.message_count ?? 0} {inb.message_count === 1 ? 'msg' : 'msgs'})
+              </option>
+            {/each}
+          </select>
+        </div>
       {/if}
     </div>
 
-    <div class="hero-top-right">
-      <!-- Segmented Inbox Management Capsule -->
-      <div class="inbox-capsule-control">
-        <div
-          class="capsule-stat"
-          title="{displayTotal} active inboxes ({Math.max(0, displayTotal - emptyCount)} with messages, {emptyCount} empty)"
-        >
-          <svg class="ui-icon-xs stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-            <polyline points="22,6 12,13 2,6" />
-          </svg>
-          <span class="stat-count">{displayTotal}</span>
-          <span class="stat-label">Inboxes</span>
-        </div>
-
-        <span class="capsule-divider"></span>
-
-        {#if onCleanEmptyInboxes}
-          <div class="capsule-action-wrap">
-            <button
-              type="button"
-              class="capsule-action-btn"
-              class:is-confirming={confirmingClean}
-              class:has-empty={emptyCount > 0}
-              class:is-empty-zero={emptyCount === 0}
-              disabled={emptyCount === 0 || isCleaning}
-              onclick={triggerCleanEmpty}
-              title={emptyCount === 0
-                ? 'All inboxes currently have incoming emails'
-                : confirmingClean
-                  ? 'Click again to permanently delete empty inboxes'
-                  : `Clean ${emptyCount} empty inboxes without messages`}
-            >
-              {#if isCleaning}
-                <span class="spinner-mini"></span>
-                <span class="action-text">Cleaning...</span>
-              {:else if confirmingClean}
-                <svg class="ui-icon-xs confirm-check-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                <span class="action-text confirm-text">Confirm ({emptyCount})</span>
-              {:else}
-                <svg class="ui-icon-xs action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 6h18" />
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                </svg>
-                {#if emptyCount > 0}
-                  <span class="action-text">Clean <span class="empty-badge">{emptyCount}</span></span>
-                {:else}
-                  <span class="action-text muted">All Active</span>
-                {/if}
-              {/if}
-            </button>
-            {#if confirmingClean}
-              <button
-                type="button"
-                class="cancel-confirm-btn"
-                onclick={cancelConfirmClean}
-                title="Cancel cleaning"
-              >
-                ✕
-              </button>
-            {/if}
-          </div>
-        {/if}
-      </div>
-
-      <div class="inbox-switch-wrapper" bind:this={comboboxWrapper}>
-        <span class="switch-label">Switch:</span>
-        <div class="combobox-container">
-          <button
-            type="button"
-            class="combobox-trigger"
-            class:open={isSelectOpen}
-            onclick={toggleDropdown}
-            aria-haspopup="listbox"
-            aria-expanded={isSelectOpen}
-            aria-label="Switch active inbox"
-          >
-            <span class="trigger-text">{activeAddress || 'Select an inbox...'}</span>
-            <svg class="ui-icon chevron-icon" class:rotate={isSelectOpen} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-
-          {#if isSelectOpen}
-            <div class="combobox-dropdown" role="listbox">
-              <div class="combobox-search-box">
-                <svg class="combobox-search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  bind:this={searchInputEl}
-                  type="text"
-                  class="combobox-search-input"
-                  placeholder="Search inbox..."
-                  bind:value={searchQuery}
-                  onclick={(e) => e.stopPropagation()}
-                  onkeydown={(e) => {
-                    if (e.key === 'Escape') {
-                      isSelectOpen = false;
-                    } else if (e.key === 'Enter' && filteredInboxes.length > 0) {
-                      handleSelect(filteredInboxes[0].address);
-                    }
-                  }}
-                />
-                {#if searchQuery}
-                  <button
-                    type="button"
-                    class="search-clear-btn"
-                    onclick={() => (searchQuery = '')}
-                    title="Clear search"
-                  >
-                    ✕
-                  </button>
-                {/if}
-              </div>
-
-              <div class="combobox-tools">
-                <div class="combobox-filter-chips">
-                  <button
-                    type="button"
-                    class="chip-btn"
-                    class:active={inboxCategory === 'all'}
-                    onclick={() => (inboxCategory = 'all')}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    class="chip-btn"
-                    class:active={inboxCategory === 'active'}
-                    onclick={() => (inboxCategory = 'active')}
-                    title="Inboxes with incoming messages"
-                  >
-                    Active ({inboxes.length - emptyCount})
-                  </button>
-                  <button
-                    type="button"
-                    class="chip-btn"
-                    class:active={inboxCategory === 'empty'}
-                    onclick={() => (inboxCategory = 'empty')}
-                    title="Empty inboxes"
-                  >
-                    Empty ({emptyCount})
-                  </button>
-                </div>
-
-                <select class="combobox-sort-select" bind:value={inboxSort} aria-label="Sort inboxes">
-                  <option value="date-desc">Newest date</option>
-                  <option value="date-asc">Oldest date</option>
-                  <option value="msgs-desc">Most messages</option>
-                  <option value="msgs-asc">Fewest messages</option>
-                </select>
-              </div>
-
-              <div class="combobox-meta">
-                {#if displayTotal > inboxes.length}
-                  <span>{filteredInboxes.length} of {displayTotal} inboxes (showing top {inboxes.length})</span>
-                {:else}
-                  <span>{filteredInboxes.length} of {inboxes.length} inboxes</span>
-                {/if}
-              </div>
-
-              <div class="combobox-list">
-                {#if filteredInboxes.length === 0}
-                  <div class="combobox-empty">
-                    No inbox matching "{searchQuery}"
-                  </div>
-                {:else}
-                  {#each filteredInboxes as inb (inb.address)}
-                    <button
-                      type="button"
-                      class="combobox-item"
-                      class:active={inb.address === activeAddress}
-                      onclick={() => handleSelect(inb.address)}
-                    >
-                      <span class="item-text">{inb.address}</span>
-                      {#if inb.message_count !== undefined}
-                        <span class="item-msg-pill" class:is-empty={inb.message_count === 0}>
-                          {inb.message_count} {inb.message_count === 1 ? 'msg' : 'msgs'}
-                        </span>
-                      {/if}
-                      {#if inb.address === activeAddress}
-                        <svg class="ui-icon item-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      {/if}
-                    </button>
-                  {/each}
-                {/if}
-              </div>
-            </div>
-          {/if}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="hero-address-box">
-    <div class="address-display">
-      <span class="address-label">Active Disposable Address</span>
-      <div class="address-text-wrap">
-        <span class="address-text">{activeAddress || 'No inbox selected'}</span>
-      </div>
-    </div>
-    <button class="hero-copy-btn" class:copied onclick={handleCopy} title="Copy email address to clipboard (c)">
-      <span class="copy-icon">
+    <div class="address-box">
+      <span class="mono-address" title={activeAddress}>{activeAddress || 'No inbox selected'}</span>
+      <button
+        type="button"
+        class="copy-chip-btn"
+        class:is-copied={copied}
+        onclick={handleCopy}
+        title="Copy address to clipboard (c)"
+      >
         {#if copied}
-          <svg class="ui-icon check-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
+          <span>Copied!</span>
         {:else}
-          <svg class="ui-icon copy-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
+          <span>Copy</span>
+          <kbd>c</kbd>
         {/if}
-      </span>
-      <span class="copy-label">{copied ? 'Copied!' : 'Copy Address'}</span>
-    </button>
+      </button>
+    </div>
   </div>
 
-  <div class="hero-actions">
-    <button class="btn btn-primary" onclick={onQuickRandom}>
-      <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-        <circle cx="8.5" cy="8.5" r="1.5" />
-        <circle cx="15.5" cy="8.5" r="1.5" />
-        <circle cx="12" cy="12" r="1.5" />
-        <circle cx="8.5" cy="15.5" r="1.5" />
-        <circle cx="15.5" cy="15.5" r="1.5" />
-      </svg>
-      <span>Quick Random</span>
-    </button>
-    <button class="btn btn-secondary" onclick={onToggleDrawer}>
-      <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19" />
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-      <span>Custom Inbox</span>
-    </button>
-    <button class="btn btn-secondary" onclick={onRefresh}>
-      <svg class="ui-icon refresh-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <div class="actions-section">
+    {#if onToggleDrawer}
+      <button type="button" class="btn btn-secondary action-btn" onclick={onToggleDrawer} title="Create custom inbox (n)">
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        <span>+ Custom</span>
+      </button>
+    {/if}
+
+    {#if onQuickRandom}
+      <button type="button" class="btn btn-secondary action-btn" onclick={onQuickRandom} title="Generate random inbox">
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <circle cx="15.5" cy="8.5" r="1.5" />
+          <circle cx="12" cy="12" r="1.5" />
+          <circle cx="8.5" cy="15.5" r="1.5" />
+          <circle cx="15.5" cy="15.5" r="1.5" />
+        </svg>
+        <span>Random</span>
+      </button>
+    {/if}
+
+    <button
+      type="button"
+      class="btn btn-secondary action-btn"
+      class:is-spinning={spinning || isRefreshing}
+      onclick={handleRefreshClick}
+      title="Fetch incoming emails now (r)"
+    >
+      <svg class="ui-icon-xs refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="23 4 23 10 17 10" />
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
       </svg>
       <span>Refresh</span>
     </button>
-    <button class="btn btn-danger-ghost" onclick={onDeleteInbox}>
-      <svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-      </svg>
-      <span>Delete</span>
-    </button>
+
+    {#if confirmingDelete}
+      <div class="delete-confirm-group">
+        <button type="button" class="btn btn-danger-solid" onclick={triggerDelete} title="Permanently delete this inbox">
+          <span>Confirm Delete?</span>
+        </button>
+        <button type="button" class="btn btn-secondary cancel-btn" onclick={cancelDelete} title="Cancel">
+          ✕
+        </button>
+      </div>
+    {:else}
+      <button type="button" class="btn btn-danger-ghost delete-btn" onclick={triggerDelete} title="Delete active inbox">
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+        <span>Delete</span>
+      </button>
+    {/if}
   </div>
-</section>
+</div>
 
 <style>
-  .hero-card {
+  .command-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
     background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    padding: 24px;
-    margin-bottom: 24px;
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(8px);
-    position: relative;
-    z-index: 20;
+    border-radius: var(--radius-lg);
+    margin-bottom: 14px;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
-  .hero-top {
+  .address-section {
     display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .address-meta-row {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 12px;
+    gap: 8px;
   }
 
-  .hero-top-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .hero-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.25);
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--green-soft);
-  }
-
-  .live-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: pulseDot 2s infinite ease-in-out;
-  }
-
-  @keyframes pulseDot {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.35); opacity: 0.6; }
-  }
-
-  .lock-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: all var(--transition);
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .lock-btn:hover {
-    background: rgba(244, 63, 94, 0.15);
-    border-color: var(--red);
-    color: var(--red);
-  }
-
-  .hero-top-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .inbox-capsule-control {
-    display: inline-flex;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.035);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 2px 4px 2px 10px;
-    backdrop-filter: blur(8px);
-    transition: all var(--transition);
-  }
-
-  .inbox-capsule-control:hover {
-    border-color: var(--border-hover);
-    background: rgba(255, 255, 255, 0.05);
-  }
-
-  .capsule-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text-secondary);
-    user-select: none;
-    padding-right: 4px;
-  }
-
-  .stat-icon {
-    width: 14px;
-    height: 14px;
-    color: var(--accent-soft);
-  }
-
-  .stat-count {
+  .section-label {
+    font-size: 10.5px;
     font-weight: 700;
-    color: var(--text-primary);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stat-label {
-    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
-    font-weight: 500;
   }
 
-  .capsule-divider {
-    width: 1px;
-    height: 16px;
-    background: var(--border);
-    margin: 0 4px;
-  }
-
-  .capsule-action-wrap {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .capsule-action-btn {
+  .quick-switch-wrap {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 3px 9px;
-    border-radius: 999px;
-    border: 1px solid transparent;
-    background: transparent;
-    font-family: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .capsule-action-btn.has-empty {
-    color: var(--text-secondary);
-  }
-
-  .capsule-action-btn.has-empty:hover:not(:disabled) {
-    background: rgba(244, 63, 94, 0.12);
-    border-color: rgba(244, 63, 94, 0.3);
-    color: #fda4af;
-  }
-
-  .capsule-action-btn.is-empty-zero {
-    cursor: default;
-    opacity: 0.65;
-  }
-
-  .capsule-action-btn.is-confirming {
-    background: rgba(244, 63, 94, 0.2);
-    border-color: rgba(244, 63, 94, 0.5);
-    color: #ff4d6d;
-    animation: pulseConfirm 1.2s infinite ease-in-out;
-  }
-
-  @keyframes pulseConfirm {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4); }
-    50% { box-shadow: 0 0 0 4px rgba(244, 63, 94, 0); }
-  }
-
-  .confirm-check-ico {
-    width: 13px;
-    height: 13px;
-    color: #ff4d6d;
-  }
-
-  .action-icon {
-    width: 13px;
-    height: 13px;
-    color: currentColor;
-    opacity: 0.8;
-  }
-
-  .action-text {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    line-height: 1.2;
-  }
-
-  .action-text.muted {
-    font-weight: 500;
-    color: var(--text-muted);
-  }
-
-  .confirm-text {
-    font-weight: 700;
-    letter-spacing: -0.2px;
-  }
-
-  .empty-badge {
-    background: rgba(244, 63, 94, 0.2);
-    color: #fda4af;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 999px;
-    border: 1px solid rgba(244, 63, 94, 0.3);
-  }
-
-  .cancel-confirm-btn {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 10px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    line-height: 1;
-    transition: all var(--transition);
-  }
-
-  .cancel-confirm-btn:hover {
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.16);
-    border-color: var(--border-hover);
-  }
-
-  .spinner-mini {
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    border-top-color: currentColor;
-    border-radius: 50%;
-    animation: spinMini 0.8s linear infinite;
-  }
-
-  @keyframes spinMini {
-    to { transform: rotate(360deg); }
-  }
-
-  .inbox-switch-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-muted);
-    position: relative;
   }
 
   .switch-label {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 11px;
     color: var(--text-muted);
-    white-space: nowrap;
   }
 
-  .combobox-container {
-    position: relative;
-    width: 260px;
-    max-width: 100%;
+  .quick-switch-select {
+    padding: 2px 6px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    color: var(--text-secondary);
+    cursor: pointer;
+    max-width: 180px;
+    text-overflow: ellipsis;
   }
 
-  .combobox-trigger {
-    width: 100%;
+  .quick-switch-select:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+  }
+
+  .address-box {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 7px 12px;
+    padding: 6px 10px;
     background: var(--bg-elevated);
-    color: var(--text-primary);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    font-size: 12px;
-    font-weight: 500;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all var(--transition);
-    text-align: left;
-  }
-
-  .combobox-trigger:hover,
-  .combobox-trigger.open {
-    border-color: var(--border-hover);
-    background: var(--bg-hover);
-  }
-
-  .combobox-trigger.open {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-glow);
-  }
-
-  .trigger-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-  }
-
-  .chevron-icon {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-    color: var(--text-muted);
-    transition: transform var(--transition);
-  }
-
-  .chevron-icon.rotate {
-    transform: rotate(180deg);
-    color: var(--accent);
-  }
-
-  .combobox-dropdown {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    width: 320px;
-    max-width: 90vw;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-lg);
-    z-index: 100;
-    overflow: hidden;
-    backdrop-filter: blur(16px);
-    animation: dropdownFadeIn 150ms ease-out;
-  }
-
-  @keyframes dropdownFadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .combobox-search-box {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-elevated);
-    transition: border-color var(--transition), background-color var(--transition);
-  }
-
-  .combobox-search-box:focus-within {
-    border-bottom-color: var(--border-focus);
-    background: rgba(255, 255, 255, 0.03);
-  }
-
-  .combobox-search-ico {
-    width: 15px;
-    height: 15px;
-    color: var(--text-muted);
-    flex-shrink: 0;
-    position: static !important;
-    display: block;
-    pointer-events: none;
-    transition: color var(--transition);
-  }
-
-  .combobox-search-box:focus-within .combobox-search-ico {
-    color: var(--accent-soft);
-  }
-
-  .combobox-search-input {
-    flex: 1;
     min-width: 0;
-    background: transparent;
-    border: none;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-family: inherit;
-    outline: none;
-    padding: 2px 0;
-    line-height: 1.4;
   }
 
-  .combobox-search-input::placeholder {
-    color: var(--text-muted);
-  }
-
-  .search-clear-btn {
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 11px;
-    width: 18px;
-    height: 18px;
-    border-radius: 999px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    line-height: 1;
-    transition: all var(--transition);
-  }
-
-  .search-clear-btn:hover {
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.15);
-    border-color: var(--border-hover);
-  }
-
-  .combobox-tools {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px 12px;
-    background: rgba(20, 20, 28, 0.65);
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-  }
-
-  .combobox-filter-chips {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .chip-btn {
-    padding: 3px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: var(--radius-sm);
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all var(--transition);
-  }
-
-  .chip-btn:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-    border-color: var(--border-hover);
-  }
-
-  .chip-btn.active {
-    background: rgba(99, 102, 241, 0.15);
-    border-color: var(--accent);
-    color: #c7d2fe;
+  .mono-address {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
     font-weight: 600;
-  }
-
-  .combobox-sort-select {
-    padding: 3px 6px;
-    font-size: 11px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-family: inherit;
-    cursor: pointer;
-    outline: none;
-    transition: border-color var(--transition);
-  }
-
-  .combobox-sort-select:hover,
-  .combobox-sort-select:focus {
-    border-color: var(--accent);
     color: var(--text-primary);
-  }
-
-  .combobox-meta {
-    padding: 4px 12px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: rgba(255, 255, 255, 0.02);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .combobox-list {
-    max-height: 240px;
-    overflow-y: auto;
-    padding: 4px;
-  }
-
-  .combobox-list::-webkit-scrollbar {
-    width: 5px;
-  }
-
-  .combobox-list::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .combobox-list::-webkit-scrollbar-thumb {
-    background: var(--border-hover);
-    border-radius: 999px;
-  }
-
-  .combobox-empty {
-    padding: 16px 12px;
-    text-align: center;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-
-  .combobox-item {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 10px;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all var(--transition);
-    text-align: left;
-  }
-
-  .combobox-item:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .combobox-item.active {
-    background: rgba(99, 102, 241, 0.12);
-    color: var(--accent-soft);
-    font-weight: 600;
-  }
-
-  .item-text {
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
     flex: 1;
   }
 
-  .item-check {
-    width: 14px;
-    height: 14px;
-    color: var(--accent);
+  .copy-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    background: var(--bg-root);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition);
     flex-shrink: 0;
   }
 
-  .item-msg-pill {
-    font-size: 10.5px;
-    font-weight: 600;
-    padding: 1px 7px;
-    border-radius: 999px;
-    background: rgba(99, 102, 241, 0.14);
-    color: var(--accent-soft);
-    border: 1px solid rgba(99, 102, 241, 0.25);
-    white-space: nowrap;
-    letter-spacing: -0.2px;
+  .copy-chip-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
   }
 
-  .item-msg-pill.is-empty {
-    background: rgba(255, 255, 255, 0.05);
+  .copy-chip-btn.is-copied {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: var(--green);
+    color: var(--green-soft);
+  }
+
+  .copy-chip-btn kbd {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    padding: 0 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 3px;
     color: var(--text-muted);
-    border-color: var(--border);
-    font-weight: 500;
+  }
+
+  .actions-section {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .action-btn {
+    font-size: 12px;
+    padding: 7px 11px;
+  }
+
+  .is-spinning .refresh-icon {
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .delete-confirm-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .btn-danger-solid {
+    background: var(--red);
+    color: #ffffff;
+    border: 1px solid var(--red);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+  }
+
+  .cancel-btn {
+    padding: 6px 8px;
+    font-size: 11px;
   }
 
   @media (max-width: 640px) {
-    .hero-top-right {
-      width: 100%;
+    .command-bar {
       flex-direction: column;
       align-items: stretch;
-      gap: 10px;
+      padding: 10px;
     }
 
-    .inbox-capsule-control {
+    .actions-section {
       width: 100%;
-      justify-content: space-between;
-      box-sizing: border-box;
     }
 
-    .inbox-switch-wrapper {
-      width: 100%;
-      justify-content: space-between;
-    }
-
-    .combobox-container {
+    .actions-section .btn {
       flex: 1;
-      width: auto;
+      justify-content: center;
+      padding: 7px 6px;
+      font-size: 11.5px;
     }
-
-    .combobox-dropdown {
-      right: 0;
-      left: 0;
-      width: 100%;
-      max-width: 100%;
-    }
-  }
-
-  .hero-address-box {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 16px 20px;
-    margin-bottom: 20px;
-    transition: border-color var(--transition);
-  }
-
-  .hero-address-box:hover {
-    border-color: var(--border-hover);
-  }
-
-  .address-display {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .address-label {
-    display: block;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    font-weight: 600;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
-
-  .address-text-wrap {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .address-text {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: -0.3px;
-    word-break: break-all;
-  }
-
-  .hero-copy-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 18px;
-    background: var(--accent);
-    color: #ffffff;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 13px;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    white-space: nowrap;
-    box-shadow: 0 2px 10px var(--accent-glow);
-    transition: all var(--transition);
-    flex-shrink: 0;
-  }
-
-  .hero-copy-btn:hover {
-    background: var(--accent-soft);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px var(--accent-glow);
-  }
-
-  .hero-copy-btn.copied {
-    background: var(--green);
-    box-shadow: 0 2px 10px var(--green-glow);
-  }
-
-  .hero-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .btn-danger-ghost {
-    margin-left: auto;
   }
 </style>

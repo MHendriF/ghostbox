@@ -5,6 +5,7 @@
   import { downloadEml, playNotificationChime } from './utils';
 
   import Header from './components/Header.svelte';
+  import InboxSidebar from './components/InboxSidebar.svelte';
   import HeroCard from './components/HeroCard.svelte';
   import NewInboxDrawer from './components/NewInboxDrawer.svelte';
   import MessagesPanel from './components/MessagesPanel.svelte';
@@ -58,7 +59,7 @@
     toasts = [...toasts, { id, text }];
     setTimeout(() => {
       toasts = toasts.filter((t) => t.id !== id);
-    }, 2600);
+    }, 2400);
   }
 
   function resetCountdown() {
@@ -101,7 +102,6 @@
           activeAddress = list[0].address;
         }
       } else {
-        // No inbox exists -> create quick random
         await handleQuickRandom(false);
       }
       if (activeAddress) {
@@ -148,9 +148,6 @@
   async function handleDeleteInbox() {
     if (!activeAddress) return;
     const target = activeAddress;
-    if (!confirm(`Delete inbox ${target}? All messages in this inbox will be permanently deleted.`)) {
-      return;
-    }
     try {
       await api.deleteInbox(target);
       showToast(`Inbox ${target} deleted`);
@@ -173,13 +170,13 @@
     try {
       const res = await api.cleanEmptyInboxes();
       if (res.deletedInboxes === 0) {
-        showToast('Tidak ada inbox kosong yang perlu dibersihkan');
+        showToast('No empty inboxes to clean');
       } else {
-        showToast(`Berhasil membersihkan ${res.deletedInboxes} inbox kosong`);
+        showToast(`Cleaned ${res.deletedInboxes} empty inboxes`);
         await loadInboxes();
       }
     } catch (err: any) {
-      showToast(err.message || 'Gagal membersihkan inbox kosong');
+      showToast(err.message || 'Failed to clean empty inboxes');
     }
   }
 
@@ -288,7 +285,7 @@
       if (activeAddress) {
         e.preventDefault();
         navigator.clipboard.writeText(activeAddress).then(() => {
-          showToast('Email address copied to clipboard');
+          showToast('Email address copied');
         }).catch(() => {
           showToast('Failed to copy email address');
         });
@@ -322,57 +319,78 @@
   });
 </script>
 
-<div class="app">
-  <Header appName={config.appName} appSubtitle={config.mailDomain ? `Disposable inbox for ${config.mailDomain}` : 'Disposable temporary inbox'} />
-
-  <HeroCard
-    {inboxes}
-    {activeAddress}
-    {totalInboxesCount}
-    {emptyInboxesCount}
-    authRequired={!!config.authRequired}
-    onSelectInbox={handleSelectInbox}
-    onQuickRandom={() => handleQuickRandom(true)}
-    onToggleDrawer={() => (showNewDrawer = !showNewDrawer)}
-    onRefresh={() => {
-      resetCountdown();
-      loadMessages();
-    }}
-    onDeleteInbox={handleDeleteInbox}
-    onLock={handleLockSession}
-    onShowToast={showToast}
-    onCleanEmptyInboxes={handleCleanEmptyInboxes}
-  />
-
-  <NewInboxDrawer
-    open={showNewDrawer}
-    mailDomains={config.mailDomains || (config.mailDomain ? [config.mailDomain] : [])}
+<div class="app-layout">
+  <Header
+    appName={config.appName}
     mailDomain={config.mailDomain}
-    onCreate={handleCreateCustom}
-    onCancel={() => (showNewDrawer = false)}
+    {countdown}
+    authRequired={!!config.authRequired}
+    onLock={handleLockSession}
   />
 
-  <MessagesPanel
-    {messages}
-    activeInboxAddress={activeAddress}
-    countdownSeconds={countdown}
-    onDeleteMessage={handleDeleteSingleMessage}
-    onDownloadEml={handleDownloadEml}
-    onShowToast={showToast}
-  />
+  <main class="workspace-grid">
+    <div class="sidebar-column">
+      <InboxSidebar
+        {inboxes}
+        {activeAddress}
+        {totalInboxesCount}
+        {emptyInboxesCount}
+        onSelectInbox={handleSelectInbox}
+        onQuickRandom={() => handleQuickRandom(true)}
+        onToggleDrawer={() => (showNewDrawer = !showNewDrawer)}
+        onCleanEmptyInboxes={handleCleanEmptyInboxes}
+      />
+    </div>
 
-  <div class="keyboard-hints" aria-label="Keyboard Shortcuts">
-    <span class="hint-item"><kbd>/</kbd> search</span>
-    <span class="hint-item"><kbd>r</kbd> refresh</span>
-    <span class="hint-item"><kbd>n</kbd> new inbox</span>
-    <span class="hint-item"><kbd>c</kbd> copy address</span>
-    <span class="hint-item"><kbd>esc</kbd> close</span>
-  </div>
+    <div class="workspace-main">
+      <HeroCard
+        {inboxes}
+        {activeAddress}
+        isRefreshing={isFetchingMessages}
+        onSelectInbox={handleSelectInbox}
+        onQuickRandom={() => handleQuickRandom(true)}
+        onToggleDrawer={() => (showNewDrawer = !showNewDrawer)}
+        onRefresh={() => {
+          resetCountdown();
+          loadMessages();
+        }}
+        onDeleteInbox={handleDeleteInbox}
+        onShowToast={showToast}
+      />
 
-  <footer>
-    <a href="https://github.com/MHendriF" target="_blank" rel="noopener">
-      Developed by <span>MHendriF</span>
-    </a>
+      <NewInboxDrawer
+        open={showNewDrawer}
+        mailDomains={config.mailDomains || (config.mailDomain ? [config.mailDomain] : [])}
+        mailDomain={config.mailDomain}
+        onCreate={handleCreateCustom}
+        onCancel={() => (showNewDrawer = false)}
+      />
+
+      <MessagesPanel
+        {messages}
+        activeInboxAddress={activeAddress}
+        countdownSeconds={countdown}
+        onDeleteMessage={handleDeleteSingleMessage}
+        onDownloadEml={handleDownloadEml}
+        onShowToast={showToast}
+      />
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="keyboard-hints" aria-label="Keyboard Shortcuts">
+      <span class="hint-item"><kbd>/</kbd> search</span>
+      <span class="hint-item"><kbd>r</kbd> refresh</span>
+      <span class="hint-item"><kbd>n</kbd> new inbox</span>
+      <span class="hint-item"><kbd>c</kbd> copy address</span>
+      <span class="hint-item"><kbd>esc</kbd> close</span>
+    </div>
+
+    <div class="footer-meta">
+      <a href="https://github.com/MHendriF" target="_blank" rel="noopener">
+        Developed by <span>MHendriF</span>
+      </a>
+    </div>
   </footer>
 </div>
 
@@ -387,66 +405,111 @@
 <Toast {toasts} />
 
 <style>
-  .app {
-    max-width: 1024px;
+  .app-layout {
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 40px 24px 80px;
+    padding: 16px 16px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .workspace-grid {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    flex: 1;
+  }
+
+  .sidebar-column {
+    position: sticky;
+    top: 16px;
+  }
+
+  .workspace-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 8px 12px;
+    margin-top: auto;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .keyboard-hints {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-top: 24px;
-    padding: 8px 16px;
-    font-size: 11.5px;
-    color: var(--text-tertiary);
-    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
     user-select: none;
+    flex-wrap: wrap;
   }
 
   .hint-item {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
   }
 
   .hint-item kbd {
-    background: var(--bg-elevated);
+    background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 6px;
+    border-radius: var(--radius-xs);
+    padding: 1px 5px;
     font-family: var(--font-mono);
     font-size: 10px;
-    color: var(--accent-soft);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    color: var(--text-secondary);
   }
 
-  footer {
-    text-align: center;
-    padding: 24px 0 20px;
-    font-size: 12px;
-    font-weight: 500;
+  .footer-meta {
+    font-size: 11.5px;
     color: var(--text-muted);
   }
 
-  footer a {
+  .footer-meta a {
     color: var(--text-muted);
     text-decoration: none;
     transition: color var(--transition);
   }
 
-  footer a span {
-    color: var(--accent-soft);
+  .footer-meta a span {
+    color: var(--text-secondary);
     font-weight: 600;
   }
 
-  footer a:hover {
-    color: var(--text-secondary);
+  .footer-meta a:hover {
+    color: var(--text-primary);
+  }
+
+  @media (max-width: 860px) {
+    .workspace-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .sidebar-column {
+      position: static;
+    }
+
+    .app-footer {
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
   }
 
   @media (max-width: 640px) {
+    .app-layout {
+      padding: 10px 10px 30px;
+    }
+
     .keyboard-hints {
       display: none;
     }

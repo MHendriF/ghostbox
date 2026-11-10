@@ -1,100 +1,176 @@
 <script lang="ts">
   interface Props {
-    appName: string;
-    appSubtitle: string;
+    appName?: string;
+    mailDomain?: string;
+    countdown?: number;
+    authRequired?: boolean;
+    onLock?: () => void;
   }
 
-  let { appName, appSubtitle }: Props = $props();
+  let {
+    appName = 'GhostBox',
+    mailDomain = '',
+    countdown = 15,
+    authRequired = false,
+    onLock,
+  }: Props = $props();
 </script>
 
-<header>
-  <div class="brand">
-    <div class="brand-icon">
-      <svg class="brand-logo-svg" viewBox="0 0 512 512" width="34" height="34" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="hdrBg" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#121624" />
-            <stop offset="100%" stop-color="#0a0c14" />
-          </linearGradient>
-          <linearGradient id="hdrBorder" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#818cf8" />
-            <stop offset="45%" stop-color="#6366f1" />
-            <stop offset="100%" stop-color="#06b6d4" />
-          </linearGradient>
-          <linearGradient id="hdrGhost" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#818cf8" />
-            <stop offset="60%" stop-color="#6366f1" />
-            <stop offset="100%" stop-color="#0ea5e9" />
-          </linearGradient>
-          <linearGradient id="hdrFold" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#ffffff" />
-            <stop offset="100%" stop-color="#c7d2fe" />
-          </linearGradient>
-        </defs>
-        <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#hdrBg)" stroke="url(#hdrBorder)" stroke-width="12" />
-        <path d="M152 216C152 158.56 198.56 112 256 112C313.44 112 360 158.56 360 216V368C360 380 345.6 388 335.5 380.2L302.2 354.5L256 388L209.8 354.5L176.5 380.2C166.4 388 152 380 152 368V216Z" fill="url(#hdrGhost)" />
-        <path d="M168 216L256 288L344 216" stroke="url(#hdrFold)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" />
-        <circle cx="216" cy="200" r="18" fill="#ffffff" />
-        <circle cx="296" cy="200" r="18" fill="#ffffff" />
-        <circle cx="220" cy="198" r="7" fill="#4f46e5" />
-        <circle cx="300" cy="198" r="7" fill="#4f46e5" />
-        <circle cx="256" cy="336" r="8" fill="#38bdf8" />
-      </svg>
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" class="brand-svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+          <polyline points="22,6 12,13 2,6" />
+        </svg>
+      </div>
+      <div class="brand-titles">
+        <span class="brand-name">{appName}</span>
+        {#if mailDomain}
+          <span class="brand-domain">@{mailDomain}</span>
+        {/if}
+      </div>
     </div>
-    <h1>{appName}</h1>
   </div>
-  <p>{appSubtitle}</p>
+
+  <div class="topbar-center">
+    <div class="status-chip" title="Live inbound mail poller">
+      <span class="live-dot"></span>
+      <span class="status-label">Live</span>
+      <span class="status-countdown">{countdown}s</span>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    {#if authRequired && onLock}
+      <button type="button" class="lock-btn" onclick={onLock} title="Lock current session">
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        <span>Lock</span>
+      </button>
+    {/if}
+  </div>
 </header>
 
 <style>
-  header {
-    text-align: center;
-    margin-bottom: 32px;
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    padding: 0 16px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    margin-bottom: 16px;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .brand {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 8px;
+    gap: 10px;
+    text-decoration: none;
   }
 
-  .brand-icon {
-    display: inline-flex;
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    background: rgba(18, 22, 34, 0.7);
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.25), 0 0 20px rgba(6, 182, 212, 0.15);
-    transition: var(--transition);
+    color: var(--text-primary);
   }
 
-  .brand-icon:hover {
-    transform: translateY(-2px) scale(1.05);
-    box-shadow: 0 6px 24px rgba(99, 102, 241, 0.4), 0 0 28px rgba(6, 182, 212, 0.25);
-    border-color: rgba(99, 102, 241, 0.6);
+  .brand-svg {
+    width: 15px;
+    height: 15px;
+    stroke: var(--text-primary);
   }
 
-  .brand-logo-svg {
-    display: block;
+  .brand-titles {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 8px;
   }
 
-  h1 {
-    font-size: 36px;
-    font-weight: 800;
-    letter-spacing: -1px;
-    background: linear-gradient(135deg, #ffffff 0%, #c7d2fe 50%, #818cf8 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  .brand-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
   }
 
-  p {
-    font-size: 14px;
+  .brand-domain {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .topbar-center {
+    display: flex;
+    align-items: center;
+  }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.22);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--green-soft);
+    font-weight: 500;
+  }
+
+  .status-label {
+    font-weight: 600;
+  }
+
+  .status-countdown {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lock-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    transition: all var(--transition);
+  }
+
+  .lock-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: var(--red);
+    color: var(--red);
   }
 </style>
