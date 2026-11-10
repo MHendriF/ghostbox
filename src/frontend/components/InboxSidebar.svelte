@@ -133,11 +133,11 @@
   <div class="sidebar-body" class:mobile-open={isMobileExpanded}>
     <div class="action-grid">
       <button type="button" class="btn btn-secondary action-btn" onclick={onToggleDrawer} title="Create custom inbox alias">
-        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg class="ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19" />
           <line x1="5" y1="12" x2="19" y2="12" />
         </svg>
-        <span>+ Custom</span>
+        <span>Custom</span>
       </button>
 
       <button type="button" class="btn btn-secondary action-btn" onclick={onQuickRandom} title="Generate random inbox immediately">
